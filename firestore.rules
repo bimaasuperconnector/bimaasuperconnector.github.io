@@ -83,6 +83,15 @@ service cloud.firestore {
            );
     }
 
+    function isValidRegistrationShape(data) {
+      return data.uid is string
+        && data.cycleId is string
+        && data.cycleId.matches('^[0-9]{4}-(0[1-9]|1[0-2])$')
+        && data.slot in ['saturday', 'sunday', 'both']
+        && data.mode in ['one_to_one', 'small_circle']
+        && data.keys().hasOnly(['uid', 'cycleId', 'slot', 'mode', 'createdAt', 'updatedAt']);
+    }
+
     match /users/{uid} {
       // A user can read their own record (to see their approval status).
       // An admin can read any record (to review pending accounts).
@@ -139,6 +148,38 @@ service cloud.firestore {
         && isValidProfileShape(request.resource.data);
 
       allow delete: if false;
+    }
+
+    match /connectionRegistrations/{registrationId} {
+      // The document ID is always `${cycleId}_${uid}` — enforced below so
+      // a client can never register itself under a mismatched ID (which
+      // would otherwise let it collide with, or masquerade as, another
+      // member's registration for the same cycle).
+      allow get: if isSignedIn() && (resource.data.uid == request.auth.uid || callerIsAdmin());
+
+      // No client-side list access yet: Phase 5's matching engine runs as
+      // trusted GitHub Actions automation via the Firebase Admin SDK,
+      // which is not subject to these rules at all, so it doesn't need a
+      // list allowance here. Admin-only for now; a per-cycle "who's
+      // registered" admin view could use this later if Phase 11 wants it.
+      allow list: if callerIsAdmin();
+
+      allow create: if callerIsApproved()
+        && request.resource.data.uid == request.auth.uid
+        && registrationId == (request.resource.data.cycleId + '_' + request.auth.uid)
+        && isValidRegistrationShape(request.resource.data);
+
+      allow update: if callerIsApproved()
+        && resource.data.uid == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['slot', 'mode', 'updatedAt'])
+        && isValidRegistrationShape(request.resource.data);
+
+      // A member can withdraw their own registration at any time before
+      // matching runs (Phase 5). Phase 7's automation is what will need
+      // to lock this down once a cycle enters a "matching in progress"
+      // state — that state doesn't exist yet, so there's nothing to lock
+      // against.
+      allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
     }
 
     // Everything else stays deny-by-default until a later phase defines
