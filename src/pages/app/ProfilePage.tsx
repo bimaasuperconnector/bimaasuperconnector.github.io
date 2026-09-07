@@ -48,7 +48,7 @@ export function ProfilePage() {
     setSaving(true);
     try {
       const isComplete = profile.batchNumber !== null && profile.headline.trim() !== '';
-      await saveOwnProfile(user.uid, { ...profile, isComplete });
+      await saveOwnProfile(user, { ...profile, isComplete });
       setProfile({ ...profile, isComplete });
       setEditing(false);
     } catch {

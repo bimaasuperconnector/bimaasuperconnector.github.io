@@ -23,12 +23,30 @@ service cloud.firestore {
     }
 
     // A caller must be an *approved* member (not just signed in) before
-    // they can create/edit a profile — this is the authoritative check;
-    // ProtectedRoute in the app is only a UX convenience on top of it.
+    // they can create/edit a profile, or read the directory — this is the
+    // authoritative check; ProtectedRoute in the app is only a UX
+    // convenience on top of it.
     function callerIsApproved() {
       return isSignedIn()
         && exists(/databases/$(database)/documents/users/$(request.auth.uid))
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'approved';
+    }
+
+    // Directory reads (Phase 3) additionally check that the PROFILE
+    // OWNER is still approved, not just the caller. This covers the edge
+    // case where an admin later revokes an already-approved member: their
+    // profile doc keeps existing (profiles are never auto-deleted), so
+    // without this check it would stay directory-visible after the
+    // revocation. This costs one extra document read per profile
+    // returned — acceptable at this alumni-network's scale; if the
+    // member base grows large enough for this to matter, a Cloud
+    // Function that denormalizes approval status onto the profile at
+    // write time would remove the extra read (that's a "stop and
+    // explain" architecture change per CLAUDE.md section 6/14, not done
+    // here).
+    function profileOwnerIsApproved(ownerUid) {
+      return exists(/databases/$(database)/documents/users/$(ownerUid))
+        && get(/databases/$(database)/documents/users/$(ownerUid)).data.status == 'approved';
     }
 
     // Keep this ceiling in sync with CURRENT_MAX_BATCH_NUMBER in
@@ -38,19 +56,30 @@ service cloud.firestore {
     }
 
     function isValidProfileShape(data) {
-      return data.headline is string && data.headline.size() <= 120
+      return data.displayName is string && data.displayName.size() <= 200
+        && data.displayNameLower is string && data.displayNameLower == data.displayName.lower()
+        && (data.photoURL == null || data.photoURL is string)
+        && data.headline is string && data.headline.size() <= 120
         && data.bio is string && data.bio.size() <= 1000
         && data.location is string && data.location.size() <= 120
+        && data.locationLower is string && data.locationLower == data.location.lower()
         && data.organizations is list && data.organizations.size() <= 10
         && data.education is list && data.education.size() <= 10
         && data.skills is list && data.skills.size() <= 20
+        && data.skillsLower is list && data.skillsLower.size() <= 20
         && data.interests is list && data.interests.size() <= 20
+        && data.interestsLower is list && data.interestsLower.size() <= 20
         && data.links is map
         && data.isComplete is bool
+        && data.hasFounderOrg is bool
+        && data.currentOrganizationName is string && data.currentOrganizationName.size() <= 200
+        && data.currentTitle is string && data.currentTitle.size() <= 200
         && isValidBatchNumber(data.batchNumber)
         && data.keys().hasOnly(
-             ['uid', 'batchNumber', 'headline', 'bio', 'location', 'organizations',
-              'education', 'skills', 'interests', 'links', 'isComplete', 'createdAt', 'updatedAt']
+             ['uid', 'displayName', 'displayNameLower', 'photoURL', 'batchNumber', 'headline',
+              'bio', 'location', 'locationLower', 'organizations', 'education', 'skills',
+              'skillsLower', 'interests', 'interestsLower', 'links', 'isComplete',
+              'hasFounderOrg', 'currentOrganizationName', 'currentTitle', 'createdAt', 'updatedAt']
            );
     }
 
@@ -86,13 +115,17 @@ service cloud.firestore {
     }
 
     match /profiles/{uid} {
-      // No directory yet (Phase 3), so profile reads stay scoped to the
-      // owner and admins only — deliberately NOT opened to "any approved
-      // member" yet. Phase 3 will widen this deliberately, together with
-      // the pagination/indexing it needs, rather than this phase silently
-      // pre-opening a capability with no UI to use it responsibly.
-      allow get: if isSelf(uid) || callerIsAdmin();
-      allow list: if callerIsAdmin();
+      // Phase 3 (Directory): any approved member can now read any OTHER
+      // approved member's profile — but only through a query the rules
+      // themselves bound to a small page size, never an unbounded
+      // client-side dump of the collection. `list` results are evaluated
+      // per returned document, so `uid` here is each document's own ID
+      // and profileOwnerIsApproved(uid) is checked once per document.
+      allow get: if isSelf(uid) || callerIsAdmin()
+        || (callerIsApproved() && profileOwnerIsApproved(uid));
+
+      allow list: if callerIsAdmin()
+        || (callerIsApproved() && request.query.limit <= 30 && profileOwnerIsApproved(uid));
 
       allow create: if isSelf(uid) && callerIsApproved()
         && request.resource.data.uid == uid

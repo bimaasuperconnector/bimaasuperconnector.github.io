@@ -1,12 +1,21 @@
 import {
   type DocumentData,
+  type QueryDocumentSnapshot,
   type Unsubscribe,
   doc,
   getDoc,
+  getDocs,
+  limit as fsLimit,
   onSnapshot,
+  orderBy,
+  query,
   serverTimestamp,
   setDoc,
+  startAfter,
+  where,
+  collection,
 } from 'firebase/firestore';
+import type { User as FirebaseUser } from 'firebase/auth';
 import { db } from '../init';
 
 export interface OrganizationEntry {
@@ -36,8 +45,8 @@ export interface ProfileLinks {
   website: string;
 }
 
-export interface Profile {
-  uid: string;
+/** Fields the profile owner edits directly. */
+export interface ProfileFormFields {
   batchNumber: number | null;
   headline: string;
   bio: string;
@@ -50,18 +59,54 @@ export interface Profile {
   isComplete: boolean;
 }
 
+/**
+ * Full stored/read shape. Includes denormalized fields written
+ * automatically by `saveOwnProfile` (never edited directly by the form):
+ * `displayName`/`photoURL` (mirrored from the Google account so the
+ * Directory never has to read the access-restricted `users` collection),
+ * lowercase copies for case-insensitive matching, and a couple of derived
+ * fields that make common Directory filters a single indexed query
+ * instead of a client-side scan. See ARCHITECTURE.md: "Claude may refine
+ * this schema when implementing phases, but must document schema
+ * changes" — this is that documentation; see the Phase 3 completion log
+ * in FEATURE_SUPERCONNECTOR.md for the full rationale.
+ */
+export interface Profile extends ProfileFormFields {
+  uid: string;
+  displayName: string;
+  displayNameLower: string;
+  photoURL: string | null;
+  locationLower: string;
+  skillsLower: string[];
+  interestsLower: string[];
+  /** true if any organizations[] entry has isFounder: true. Powers the "Entrepreneurs" directory filter without an array-of-maps query. */
+  hasFounderOrg: boolean;
+  /** Denormalized from the organizations entry with endYear === null, for card display and same-page refine — not itself queried. */
+  currentOrganizationName: string;
+  currentTitle: string;
+}
+
 const ALLOWED_TOP_LEVEL_FIELDS = [
   'uid',
+  'displayName',
+  'displayNameLower',
+  'photoURL',
   'batchNumber',
   'headline',
   'bio',
   'location',
+  'locationLower',
   'organizations',
   'education',
   'skills',
+  'skillsLower',
   'interests',
+  'interestsLower',
   'links',
   'isComplete',
+  'hasFounderOrg',
+  'currentOrganizationName',
+  'currentTitle',
   'createdAt',
   'updatedAt',
 ] as const;
@@ -71,38 +116,61 @@ function profileDocRef(uid: string) {
   return doc(db, 'profiles', uid);
 }
 
+function profilesCollection() {
+  if (!db) throw new Error('Firestore is not configured.');
+  return collection(db, 'profiles');
+}
+
 function fromSnapshot(uid: string, data: DocumentData): Profile {
   return {
     uid,
+    displayName: data.displayName ?? '',
+    displayNameLower: data.displayNameLower ?? '',
+    photoURL: data.photoURL ?? null,
     batchNumber: typeof data.batchNumber === 'number' ? data.batchNumber : null,
     headline: data.headline ?? '',
     bio: data.bio ?? '',
     location: data.location ?? '',
+    locationLower: data.locationLower ?? '',
     organizations: Array.isArray(data.organizations) ? data.organizations : [],
     education: Array.isArray(data.education) ? data.education : [],
     skills: Array.isArray(data.skills) ? data.skills : [],
+    skillsLower: Array.isArray(data.skillsLower) ? data.skillsLower : [],
     interests: Array.isArray(data.interests) ? data.interests : [],
+    interestsLower: Array.isArray(data.interestsLower) ? data.interestsLower : [],
     links: {
       linkedin: data.links?.linkedin ?? '',
       website: data.links?.website ?? '',
     },
     isComplete: data.isComplete === true,
+    hasFounderOrg: data.hasFounderOrg === true,
+    currentOrganizationName: data.currentOrganizationName ?? '',
+    currentTitle: data.currentTitle ?? '',
   };
 }
 
 export function emptyProfile(uid: string): Profile {
   return {
     uid,
+    displayName: '',
+    displayNameLower: '',
+    photoURL: null,
     batchNumber: null,
     headline: '',
     bio: '',
     location: '',
+    locationLower: '',
     organizations: [],
     education: [],
     skills: [],
+    skillsLower: [],
     interests: [],
+    interestsLower: [],
     links: { linkedin: '', website: '' },
     isComplete: false,
+    hasFounderOrg: false,
+    currentOrganizationName: '',
+    currentTitle: '',
   };
 }
 
@@ -122,15 +190,30 @@ export function subscribeToProfile(
 
 /**
  * Create-or-update, always scoped to the caller's own uid by Firestore
- * Rules (see firestore.rules). `ALLOWED_TOP_LEVEL_FIELDS` mirrors the
- * field allow-list enforced there so a client bug can't silently write an
- * unexpected key that Rules would reject anyway.
+ * Rules (see firestore.rules). Takes the signed-in `FirebaseUser` (not
+ * just a uid) so `displayName`/`photoURL` can be mirrored from the Google
+ * account automatically — the form never edits those two fields itself.
+ * `ALLOWED_TOP_LEVEL_FIELDS` mirrors the field allow-list enforced in
+ * firestore.rules as a client-side sanity check, not the security
+ * boundary.
  */
-export async function saveOwnProfile(uid: string, profile: Omit<Profile, 'uid'>): Promise<void> {
+export async function saveOwnProfile(user: FirebaseUser, fields: ProfileFormFields): Promise<void> {
+  const uid = user.uid;
   const existing = await getDoc(profileDocRef(uid));
+
+  const currentOrg = fields.organizations.find((org) => org.endYear === null);
   const payload: Record<string, unknown> = {
     uid,
-    ...profile,
+    displayName: user.displayName ?? '',
+    displayNameLower: (user.displayName ?? '').toLowerCase(),
+    photoURL: user.photoURL ?? null,
+    ...fields,
+    locationLower: fields.location.toLowerCase(),
+    skillsLower: fields.skills.map((s) => s.toLowerCase()),
+    interestsLower: fields.interests.map((s) => s.toLowerCase()),
+    hasFounderOrg: fields.organizations.some((org) => org.isFounder),
+    currentOrganizationName: currentOrg?.name ?? '',
+    currentTitle: currentOrg?.title ?? '',
     updatedAt: serverTimestamp(),
   };
   if (!existing.exists()) {
@@ -144,4 +227,94 @@ export async function saveOwnProfile(uid: string, profile: Omit<Profile, 'uid'>)
   }
 
   await setDoc(profileDocRef(uid), payload, { merge: true });
+}
+
+// --- Directory querying (Phase 3) ---
+//
+// Firestore has no full-text search. Each mode below drives exactly ONE
+// server-side indexed query (equality, array-contains, or a prefix range
+// on the SAME field used for ordering) so the set of required composite
+// indexes stays small and predictable — see firestore.indexes.json.
+// Combining two driving filters at once (e.g. batch + skill) is
+// intentionally not supported in this phase; it would multiply the
+// number of composite indexes needed for every combination.
+
+export type DirectoryMode = 'all' | 'batch' | 'name' | 'location' | 'skill' | 'interest' | 'founders';
+
+export interface DirectoryQueryOptions {
+  mode: DirectoryMode;
+  /** Required for 'batch' (batch number), 'name'/'location' (prefix text), 'skill'/'interest' (exact tag, case-insensitive). Unused for 'all'/'founders'. */
+  value?: string | number;
+  pageSize?: number;
+  cursor?: QueryDocumentSnapshot<DocumentData> | null;
+}
+
+export interface DirectoryPage {
+  profiles: Profile[];
+  lastDoc: QueryDocumentSnapshot<DocumentData> | null;
+  hasMore: boolean;
+}
+
+const DEFAULT_PAGE_SIZE = 24;
+
+export async function queryDirectory(options: DirectoryQueryOptions): Promise<DirectoryPage> {
+  const pageSize = options.pageSize ?? DEFAULT_PAGE_SIZE;
+  const col = profilesCollection();
+  const constraints = [];
+
+  switch (options.mode) {
+    case 'batch':
+      constraints.push(where('batchNumber', '==', Number(options.value)));
+      constraints.push(orderBy('displayNameLower'));
+      break;
+    case 'founders':
+      constraints.push(where('hasFounderOrg', '==', true));
+      constraints.push(orderBy('displayNameLower'));
+      break;
+    case 'skill':
+      constraints.push(where('skillsLower', 'array-contains', String(options.value).toLowerCase()));
+      constraints.push(orderBy('displayNameLower'));
+      break;
+    case 'interest':
+      constraints.push(
+        where('interestsLower', 'array-contains', String(options.value).toLowerCase()),
+      );
+      constraints.push(orderBy('displayNameLower'));
+      break;
+    case 'name': {
+      const prefix = String(options.value ?? '').toLowerCase();
+      constraints.push(orderBy('displayNameLower'));
+      constraints.push(where('displayNameLower', '>=', prefix));
+      constraints.push(where('displayNameLower', '<', prefix + '\uf8ff'));
+      break;
+    }
+    case 'location': {
+      const prefix = String(options.value ?? '').toLowerCase();
+      constraints.push(orderBy('locationLower'));
+      constraints.push(where('locationLower', '>=', prefix));
+      constraints.push(where('locationLower', '<', prefix + '\uf8ff'));
+      break;
+    }
+    case 'all':
+    default:
+      constraints.push(orderBy('displayNameLower'));
+      break;
+  }
+
+  if (options.cursor) {
+    constraints.push(startAfter(options.cursor));
+  }
+  // Request one extra document so we know whether a next page exists
+  // without a separate count query.
+  constraints.push(fsLimit(pageSize + 1));
+
+  const snapshot = await getDocs(query(col, ...constraints));
+  const docs = snapshot.docs.slice(0, pageSize);
+  const hasMore = snapshot.docs.length > pageSize;
+
+  return {
+    profiles: docs.map((d) => fromSnapshot(d.id, d.data())),
+    lastDoc: docs.length > 0 ? docs[docs.length - 1] : null,
+    hasMore,
+  };
 }

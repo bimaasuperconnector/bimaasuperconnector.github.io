@@ -1,4 +1,37 @@
 {
-  "indexes": [],
+  "indexes": [
+    {
+      "collectionGroup": "profiles",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "batchNumber", "order": "ASCENDING" },
+        { "fieldPath": "displayNameLower", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "profiles",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "hasFounderOrg", "order": "ASCENDING" },
+        { "fieldPath": "displayNameLower", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "profiles",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "skillsLower", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "displayNameLower", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "profiles",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "interestsLower", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "displayNameLower", "order": "ASCENDING" }
+      ]
+    }
+  ],
   "fieldOverrides": []
 }
