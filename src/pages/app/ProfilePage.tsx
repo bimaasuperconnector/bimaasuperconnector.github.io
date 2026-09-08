@@ -7,6 +7,8 @@ import { EducationEditor } from '../../components/profile/EducationEditor';
 import { allBatches, findBatch } from '../../lib/batches';
 import {
   type Profile,
+  NETWORKING_PURPOSES,
+  NETWORKING_PURPOSE_LABELS,
   emptyProfile,
   getProfile,
   saveOwnProfile,
@@ -137,6 +139,15 @@ export function ProfilePage() {
             <p className="mt-sm text-body-md text-body">{profile.interests.join(', ')}</p>
           </div>
         )}
+
+        {profile.networkingPurpose.length > 0 && (
+          <div className="mt-lg">
+            <h2 className="text-title-sm text-ink">Looking for</h2>
+            <p className="mt-sm text-body-md text-body">
+              {profile.networkingPurpose.map((p) => NETWORKING_PURPOSE_LABELS[p]).join(', ')}
+            </p>
+          </div>
+        )}
       </div>
     );
   }
@@ -238,6 +249,29 @@ export function ProfilePage() {
           values={profile.interests}
           onChange={(interests) => setProfile({ ...profile, interests })}
         />
+
+        <div>
+          <label className="text-label-md text-ink">What are you looking for?</label>
+          <div className="mt-xs space-y-xs">
+            {NETWORKING_PURPOSES.map((purpose) => (
+              <label key={purpose} className="flex items-center gap-xs text-body-md text-body">
+                <input
+                  type="checkbox"
+                  checked={profile.networkingPurpose.includes(purpose)}
+                  onChange={(e) =>
+                    setProfile({
+                      ...profile,
+                      networkingPurpose: e.target.checked
+                        ? [...profile.networkingPurpose, purpose]
+                        : profile.networkingPurpose.filter((p) => p !== purpose),
+                    })
+                  }
+                />
+                {NETWORKING_PURPOSE_LABELS[purpose]}
+              </label>
+            ))}
+          </div>
+        </div>
 
         <div className="grid gap-sm md:grid-cols-2">
           <div>

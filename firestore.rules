@@ -69,6 +69,10 @@ service cloud.firestore {
         && data.skillsLower is list && data.skillsLower.size() <= 20
         && data.interests is list && data.interests.size() <= 20
         && data.interestsLower is list && data.interestsLower.size() <= 20
+        && data.networkingPurpose is list && data.networkingPurpose.size() <= 6
+        && data.networkingPurpose.hasOnly(
+             ['mentorship', 'job_search', 'hiring', 'collaboration', 'industry_insights', 'reconnecting']
+           )
         && data.links is map
         && data.isComplete is bool
         && data.hasFounderOrg is bool
@@ -78,8 +82,9 @@ service cloud.firestore {
         && data.keys().hasOnly(
              ['uid', 'displayName', 'displayNameLower', 'photoURL', 'batchNumber', 'headline',
               'bio', 'location', 'locationLower', 'organizations', 'education', 'skills',
-              'skillsLower', 'interests', 'interestsLower', 'links', 'isComplete',
-              'hasFounderOrg', 'currentOrganizationName', 'currentTitle', 'createdAt', 'updatedAt']
+              'skillsLower', 'interests', 'interestsLower', 'networkingPurpose', 'links',
+              'isComplete', 'hasFounderOrg', 'currentOrganizationName', 'currentTitle',
+              'createdAt', 'updatedAt']
            );
     }
 
@@ -180,6 +185,50 @@ service cloud.firestore {
       // state — that state doesn't exist yet, so there's nothing to lock
       // against.
       allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
+    }
+
+    // Phase 5 (Matching engine): the collections below are written ONLY
+    // by trusted server-side automation via the Firebase Admin SDK,
+    // which is not subject to these Rules at all — every client write
+    // path here is deny-all, including for admins. This is deliberate:
+    // per SECURITY_AND_TESTING.md, "Client cannot create arbitrary match
+    // records... Pair history is protected." Even a trusted admin should
+    // go through the automation pipeline (once Phase 7 builds it), not
+    // hand-edit match results via the client SDK, so results stay
+    // auditable and idempotent. Reads are scoped narrowly below.
+    //
+    // Nothing writes to these collections yet — Phase 5 ships the
+    // pure algorithm and this data model/security boundary; Phase 7's
+    // automation is what will actually call the algorithm and perform
+    // the writes (via Admin SDK, bypassing these Rules).
+
+    match /matches/{matchId} {
+      // Full match documents (including the compatibility breakdown —
+      // protected, same spirit as the hidden Connection Meter) are
+      // admin-only. Participants get their own scoped view via
+      // matchParticipants below, without seeing the scoring internals.
+      allow get: if callerIsAdmin();
+      allow list: if callerIsAdmin();
+      allow create, update, delete: if false;
+    }
+
+    match /matchParticipants/{matchParticipantId} {
+      // Each participant can see their own match assignment (who
+      // they're paired/grouped with) without exposing anyone else's
+      // record or the underlying compatibility scores.
+      allow get: if isSignedIn() && (resource.data.uid == request.auth.uid || callerIsAdmin());
+      allow list: if callerIsAdmin();
+      allow create, update, delete: if false;
+    }
+
+    match /pairHistory/{pairId} {
+      // Pair history is protected internal matching data (repeat-match
+      // penalties, and eventually Phase 6 feedback sentiment) — kept
+      // admin-only rather than exposed to the two participants, even
+      // though they could infer part of it from matchParticipants.
+      allow get: if callerIsAdmin();
+      allow list: if callerIsAdmin();
+      allow create, update, delete: if false;
     }
 
     // Everything else stays deny-by-default until a later phase defines

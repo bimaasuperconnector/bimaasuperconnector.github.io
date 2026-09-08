@@ -45,6 +45,25 @@ export interface ProfileLinks {
   website: string;
 }
 
+export const NETWORKING_PURPOSES = [
+  'mentorship',
+  'job_search',
+  'hiring',
+  'collaboration',
+  'industry_insights',
+  'reconnecting',
+] as const;
+export type NetworkingPurpose = (typeof NETWORKING_PURPOSES)[number];
+
+export const NETWORKING_PURPOSE_LABELS: Record<NetworkingPurpose, string> = {
+  mentorship: 'Mentorship',
+  job_search: 'Job searching',
+  hiring: 'Hiring / recruiting',
+  collaboration: 'Collaboration / co-founder search',
+  industry_insights: 'Industry insights',
+  reconnecting: 'Just reconnecting',
+};
+
 /** Fields the profile owner edits directly. */
 export interface ProfileFormFields {
   batchNumber: number | null;
@@ -55,6 +74,15 @@ export interface ProfileFormFields {
   education: EducationEntry[];
   skills: string[];
   interests: string[];
+  /**
+   * Phase 5 schema addition: why this member wants to connect. Added
+   * specifically because the matching engine's "networking purpose"
+   * factor (15% weight) had nothing to read otherwise — see the Phase 5
+   * chat response and completion log for the full reasoning. A small,
+   * fixed, owner-adjustable taxonomy (NETWORKING_PURPOSES above), not
+   * free text, so it stays usable as a matching signal.
+   */
+  networkingPurpose: NetworkingPurpose[];
   links: ProfileLinks;
   isComplete: boolean;
 }
@@ -102,6 +130,7 @@ const ALLOWED_TOP_LEVEL_FIELDS = [
   'skillsLower',
   'interests',
   'interestsLower',
+  'networkingPurpose',
   'links',
   'isComplete',
   'hasFounderOrg',
@@ -138,6 +167,7 @@ function fromSnapshot(uid: string, data: DocumentData): Profile {
     skillsLower: Array.isArray(data.skillsLower) ? data.skillsLower : [],
     interests: Array.isArray(data.interests) ? data.interests : [],
     interestsLower: Array.isArray(data.interestsLower) ? data.interestsLower : [],
+    networkingPurpose: Array.isArray(data.networkingPurpose) ? data.networkingPurpose : [],
     links: {
       linkedin: data.links?.linkedin ?? '',
       website: data.links?.website ?? '',
@@ -166,6 +196,7 @@ export function emptyProfile(uid: string): Profile {
     skillsLower: [],
     interests: [],
     interestsLower: [],
+    networkingPurpose: [],
     links: { linkedin: '', website: '' },
     isComplete: false,
     hasFounderOrg: false,
