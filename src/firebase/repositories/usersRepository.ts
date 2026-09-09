@@ -16,14 +16,19 @@ import type { User as FirebaseUser } from 'firebase/auth';
 import { db } from '../init';
 
 export type AccountStatus = 'pending' | 'approved' | 'rejected';
+export type UserRole = 'alumni' | 'batch_admin' | 'super_admin';
 
 export interface UserRecord {
   uid: string;
   email: string | null;
   displayName: string | null;
   photoURL: string | null;
+  batchNumber: number | null;
+  note: string;
   status: AccountStatus;
-  isAdmin: boolean;
+  role: UserRole;
+  /** Only meaningful when role === 'batch_admin'. Which batch numbers this person can approve/reject pending members for. */
+  assignedBatchNumbers: number[];
 }
 
 function usersCollection() {
@@ -42,31 +47,43 @@ function fromSnapshot(uid: string, data: DocumentData): UserRecord {
     email: data.email ?? null,
     displayName: data.displayName ?? null,
     photoURL: data.photoURL ?? null,
+    batchNumber: typeof data.batchNumber === 'number' ? data.batchNumber : null,
+    note: data.note ?? '',
     status: (data.status as AccountStatus) ?? 'pending',
-    isAdmin: data.isAdmin === true,
+    role: (data.role as UserRole) ?? 'alumni',
+    assignedBatchNumbers: Array.isArray(data.assignedBatchNumbers) ? data.assignedBatchNumbers : [],
   };
 }
 
-/**
- * Called once per sign-in (see UserRecordContext). If the signed-in Google
- * account has no `users/{uid}` document yet, creates one in the `pending`
- * state. Firestore Rules (see firestore.rules) independently enforce that
- * a client can only ever create its OWN doc, and only with
- * status: 'pending' and isAdmin: false — the client cannot self-approve or
- * self-elevate no matter what this function sends.
- */
-export async function ensureUserRecord(user: FirebaseUser): Promise<void> {
-  const ref = userDocRef(user.uid);
-  const existing = await getDoc(ref);
-  if (existing.exists()) return;
+export async function getUserRecord(uid: string): Promise<UserRecord | null> {
+  const snapshot = await getDoc(userDocRef(uid));
+  return snapshot.exists() ? fromSnapshot(uid, snapshot.data()) : null;
+}
 
+/**
+ * Submits the one-time onboarding form: full name, batch, and an optional
+ * note to the approver. This REPLACES the old auto-created-on-sign-in
+ * flow — the `users/{uid}` doc is now only created once the member
+ * actually fills this in, not silently on first Google sign-in. Firestore
+ * Rules independently enforce that a client can only ever create its OWN
+ * doc, and only with status: 'pending' and role: 'alumni' — nobody can
+ * self-approve or self-elevate no matter what this function sends.
+ */
+export async function submitOnboarding(
+  user: FirebaseUser,
+  fields: { displayName: string; batchNumber: number; note: string },
+): Promise<void> {
+  const ref = userDocRef(user.uid);
   await setDoc(ref, {
     uid: user.uid,
     email: user.email,
-    displayName: user.displayName,
+    displayName: fields.displayName.trim(),
     photoURL: user.photoURL,
+    batchNumber: fields.batchNumber,
+    note: fields.note.trim(),
     status: 'pending',
-    isAdmin: false,
+    role: 'alumni',
+    assignedBatchNumbers: [],
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
@@ -82,10 +99,11 @@ export function subscribeToUserRecord(
 }
 
 /**
- * Admin-only in practice: Firestore Rules reject this update unless the
- * caller's own `users/{uid}` doc has `isAdmin: true`, and unless the write
- * touches only the `status`/`updatedAt` fields. The client-side `isAdmin`
- * check below is a UX convenience, not the security boundary.
+ * Approve/reject. Firestore Rules independently enforce that:
+ * - a super_admin can do this for anyone,
+ * - a batch_admin can only do this for a pending user whose batchNumber
+ *   is in the batch_admin's own assignedBatchNumbers,
+ * - the write can only touch status/updatedAt (can't also grant a role).
  */
 export async function setUserStatus(uid: string, status: AccountStatus): Promise<void> {
   await updateDoc(userDocRef(uid), {
@@ -94,15 +112,44 @@ export async function setUserStatus(uid: string, status: AccountStatus): Promise
   });
 }
 
+/**
+ * super_admin only (enforced by Rules): promotes an approved alumni to
+ * batch_admin scoped to the given batch numbers, or demotes back to
+ * alumni (pass an empty array). There's no dedicated UI for this yet —
+ * see the Phase 1 revision notes in FEATURE_SUPERCONNECTOR.md — but the
+ * repository function exists so a minimal admin-console control can call
+ * it directly.
+ */
+export async function setUserRole(
+  uid: string,
+  role: UserRole,
+  assignedBatchNumbers: number[] = [],
+): Promise<void> {
+  await updateDoc(userDocRef(uid), {
+    role,
+    assignedBatchNumbers: role === 'batch_admin' ? assignedBatchNumbers : [],
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/**
+ * Pending members, optionally scoped to a set of batch numbers (used by
+ * batch_admin's console view). Pass `undefined` for a super_admin's
+ * unscoped view of everyone pending.
+ */
 export function subscribeToPendingUsers(
   onChange: (records: UserRecord[]) => void,
+  scopedToBatchNumbers?: number[],
 ): Unsubscribe {
-  const pendingQuery = query(usersCollection(), where('status', '==', 'pending'));
+  const constraints = [where('status', '==', 'pending')];
+  const pendingQuery = query(usersCollection(), ...constraints);
   return onSnapshot(pendingQuery, (snapshot) => {
-    onChange(
-      snapshot.docs.map((docSnap: QueryDocumentSnapshot<DocumentData>) =>
-        fromSnapshot(docSnap.id, docSnap.data()),
-      ),
+    const all = snapshot.docs.map((docSnap: QueryDocumentSnapshot<DocumentData>) =>
+      fromSnapshot(docSnap.id, docSnap.data()),
     );
+    const filtered = scopedToBatchNumbers
+      ? all.filter((r) => r.batchNumber !== null && scopedToBatchNumbers.includes(r.batchNumber))
+      : all;
+    onChange(filtered);
   });
 }

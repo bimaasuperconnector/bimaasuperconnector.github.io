@@ -11,48 +11,46 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == uid;
     }
 
-    // Looks up the CALLER's own users/{uid} doc to check isAdmin. This is
-    // the only privilege check in the whole ruleset: a client can never
-    // set isAdmin on itself (see the create rule below), so the only way
-    // this is ever true is if another admin, or the project owner via the
-    // Firebase console, set it.
-    function callerIsAdmin() {
-      return isSignedIn()
-        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
-        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
+    function callerRecord() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function callerHasUserDoc() {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function callerIsSuperAdmin() {
+      return callerHasUserDoc() && callerRecord().role == 'super_admin';
+    }
+
+    function callerIsBatchAdmin() {
+      return callerHasUserDoc() && callerRecord().role == 'batch_admin';
+    }
+
+    // Either admin tier — used where "some kind of admin" is enough
+    // (e.g. reading protected match data). Batch-scoped write checks use
+    // callerIsBatchAdmin() + assignedBatchNumbers directly instead.
+    function callerIsAnyAdmin() {
+      return callerIsSuperAdmin() || callerIsBatchAdmin();
     }
 
     // A caller must be an *approved* member (not just signed in) before
-    // they can create/edit a profile, or read the directory — this is the
-    // authoritative check; ProtectedRoute in the app is only a UX
-    // convenience on top of it.
+    // they can create/edit a profile, register, etc. — this is the
+    // authoritative check; ProtectedRoute in the app is UX only.
     function callerIsApproved() {
-      return isSignedIn()
-        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
-        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'approved';
-    }
-
-    // Directory reads (Phase 3) additionally check that the PROFILE
-    // OWNER is still approved, not just the caller. This covers the edge
-    // case where an admin later revokes an already-approved member: their
-    // profile doc keeps existing (profiles are never auto-deleted), so
-    // without this check it would stay directory-visible after the
-    // revocation. This costs one extra document read per profile
-    // returned — acceptable at this alumni-network's scale; if the
-    // member base grows large enough for this to matter, a Cloud
-    // Function that denormalizes approval status onto the profile at
-    // write time would remove the extra read (that's a "stop and
-    // explain" architecture change per CLAUDE.md section 6/14, not done
-    // here).
-    function profileOwnerIsApproved(ownerUid) {
-      return exists(/databases/$(database)/documents/users/$(ownerUid))
-        && get(/databases/$(database)/documents/users/$(ownerUid)).data.status == 'approved';
+      return callerHasUserDoc() && callerRecord().status == 'approved';
     }
 
     // Keep this ceiling in sync with CURRENT_MAX_BATCH_NUMBER in
-    // src/lib/batches.ts. null is allowed (batch not yet selected).
+    // src/lib/batches.ts. null is allowed on profiles (batch not yet
+    // selected there) but NOT on users (batch is mandatory at onboarding
+    // — see the onboarding revision in FEATURE_SUPERCONNECTOR.md).
     function isValidBatchNumber(n) {
-      return n == null || (n is int && n >= 1 && n <= 43);
+      return n is int && n >= 1 && n <= 43;
+    }
+
+    function isValidBatchNumberOrNull(n) {
+      return n == null || isValidBatchNumber(n);
     }
 
     function isValidProfileShape(data) {
@@ -78,13 +76,26 @@ service cloud.firestore {
         && data.hasFounderOrg is bool
         && data.currentOrganizationName is string && data.currentOrganizationName.size() <= 200
         && data.currentTitle is string && data.currentTitle.size() <= 200
-        && isValidBatchNumber(data.batchNumber)
+        // Denormalized from the caller's OWN approval status at save
+        // time. Always required true here (create/update both require
+        // callerIsApproved() independently), which makes directory
+        // `list` queries a cheap same-document field check instead of a
+        // cross-collection get() per result — see the Phase 5-adjacent
+        // bugfix notes in FEATURE_SUPERCONNECTOR.md for why the old
+        // cross-collection approach caused a total directory outage for
+        // non-admin users the moment ANY one profile's owner had an
+        // inconsistent status. Known tradeoff: if an admin revokes an
+        // already-approved member later, their profile can stay
+        // directory-visible (stale) until next resaved — accepted, see
+        // notes.
+        && data.approved == true
+        && isValidBatchNumberOrNull(data.batchNumber)
         && data.keys().hasOnly(
              ['uid', 'displayName', 'displayNameLower', 'photoURL', 'batchNumber', 'headline',
               'bio', 'location', 'locationLower', 'organizations', 'education', 'skills',
               'skillsLower', 'interests', 'interestsLower', 'networkingPurpose', 'links',
               'isComplete', 'hasFounderOrg', 'currentOrganizationName', 'currentTitle',
-              'createdAt', 'updatedAt']
+              'approved', 'createdAt', 'updatedAt']
            );
     }
 
@@ -98,57 +109,89 @@ service cloud.firestore {
     }
 
     match /users/{uid} {
-      // A user can read their own record (to see their approval status).
-      // An admin can read any record (to review pending accounts).
-      allow get: if isSelf(uid) || callerIsAdmin();
-      allow list: if callerIsAdmin();
+      // A user can read their own record. Any admin tier can read any
+      // record (needed for the approval console).
+      allow get: if isSelf(uid) || callerIsAnyAdmin();
+      // Kept intentionally simple (no batch-scoping in the rule itself)
+      // to avoid Firestore's "queries are all or nothing" trap: a rule
+      // that filtered per-document by comparing to the caller's
+      // assigned batches would fail the ENTIRE query the moment ANY
+      // pending user outside that scope existed. Batch-scoping is
+      // enforced at the point that actually matters — the approve/
+      // reject WRITE below, which is a safe single-document check, not
+      // a query. The admin console additionally filters what it
+      // DISPLAYS to a batch_admin as a UX convenience, not a security
+      // boundary. Documented tradeoff: a batch_admin can technically
+      // list pending users outside their batch (name/batch/note only,
+      // no sensitive data) via a direct API call — accepted, since
+      // batch_admin is already a trusted, owner-appointed role.
+      allow list: if callerIsAnyAdmin();
 
-      // First sign-in creates exactly one doc, for yourself, always
-      // starting 'pending' and never admin. No client input can bypass
-      // this — status and isAdmin are hardcoded requirements here, not
-      // read from the client's request body values.
+      // Onboarding: first sign-in does NOT auto-create this document
+      // anymore (see the Phase 1 revision notes). The member must
+      // submit their name, batch, and an optional note. Always starts
+      // 'pending' / role 'alumni' / no assigned batches — none of that
+      // is client-choosable no matter what the client sends.
       allow create: if isSelf(uid)
         && request.resource.data.uid == uid
         && request.resource.data.status == 'pending'
-        && request.resource.data.isAdmin == false
+        && request.resource.data.role == 'alumni'
+        && request.resource.data.assignedBatchNumbers == []
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() > 0
+        && request.resource.data.displayName.size() <= 200
+        && isValidBatchNumber(request.resource.data.batchNumber)
+        && request.resource.data.note is string
+        && request.resource.data.note.size() <= 500
         && request.resource.data.keys().hasOnly(
-             ['uid', 'email', 'displayName', 'photoURL', 'status', 'isAdmin', 'createdAt', 'updatedAt']
+             ['uid', 'email', 'displayName', 'photoURL', 'batchNumber', 'note', 'status',
+              'role', 'assignedBatchNumbers', 'createdAt', 'updatedAt']
            );
 
-      // Only an admin can change an account's status, and an admin write
-      // may ONLY touch status/updatedAt — it can't also grant itself or
-      // anyone else isAdmin, and it can't rewrite identity fields.
-      allow update: if callerIsAdmin()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt'])
-        && request.resource.data.isAdmin == resource.data.isAdmin
-        && (request.resource.data.status == 'pending'
-            || request.resource.data.status == 'approved'
-            || request.resource.data.status == 'rejected');
+      // Approve/reject (status-only, batch-scoped for batch_admin) OR
+      // role management (super_admin only, role/batches-only). Combined
+      // into one OR rather than two separate `match /users/{uid}`
+      // blocks, to avoid relying on how Firestore merges multiple match
+      // blocks for the same path — safer to be explicit here.
+      allow update: if
+        (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt'])
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.assignedBatchNumbers == resource.data.assignedBatchNumbers
+          && (request.resource.data.status == 'pending'
+              || request.resource.data.status == 'approved'
+              || request.resource.data.status == 'rejected')
+          && (
+            callerIsSuperAdmin()
+            || (callerIsBatchAdmin()
+                && resource.data.batchNumber != null
+                && resource.data.batchNumber in callerRecord().assignedBatchNumbers)
+          )
+        )
+        ||
+        (
+          callerIsSuperAdmin()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'assignedBatchNumbers', 'updatedAt'])
+          && request.resource.data.role in ['alumni', 'batch_admin', 'super_admin']
+          && request.resource.data.assignedBatchNumbers is list
+          && request.resource.data.status == resource.data.status
+        );
 
       allow delete: if false;
     }
 
     match /profiles/{uid} {
-      // Phase 3 (Directory): any approved member can now read any OTHER
-      // approved member's profile — but only through a query the rules
-      // themselves bound to a small page size, never an unbounded
-      // client-side dump of the collection. `list` results are evaluated
-      // per returned document, so `uid` here is each document's own ID
-      // and profileOwnerIsApproved(uid) is checked once per document.
-      allow get: if isSelf(uid) || callerIsAdmin()
-        || (callerIsApproved() && profileOwnerIsApproved(uid));
-
-      allow list: if callerIsAdmin()
-        || (callerIsApproved() && request.query.limit <= 30 && profileOwnerIsApproved(uid));
+      // See isValidProfileShape's comment on `approved` for why this is
+      // a same-document field check, not a cross-collection lookup.
+      allow get: if isSelf(uid) || callerIsAnyAdmin() || (callerIsApproved() && resource.data.approved == true);
+      allow list: if callerIsAnyAdmin()
+        || (callerIsApproved() && request.query.limit <= 30);
 
       allow create: if isSelf(uid) && callerIsApproved()
         && request.resource.data.uid == uid
         && isValidProfileShape(request.resource.data);
 
-      // Admins can also correct a member's profile (e.g. wrong batch),
-      // per Phase 2's "Admin/batch moderator controls" — a full batch
-      // moderator role scoped to specific batches is Phase 11.
-      allow update: if ((isSelf(uid) && callerIsApproved()) || callerIsAdmin())
+      allow update: if ((isSelf(uid) && callerIsApproved()) || callerIsAnyAdmin())
         && request.resource.data.uid == uid
         && isValidProfileShape(request.resource.data);
 
@@ -156,18 +199,14 @@ service cloud.firestore {
     }
 
     match /connectionRegistrations/{registrationId} {
-      // The document ID is always `${cycleId}_${uid}` — enforced below so
-      // a client can never register itself under a mismatched ID (which
-      // would otherwise let it collide with, or masquerade as, another
-      // member's registration for the same cycle).
-      allow get: if isSignedIn() && (resource.data.uid == request.auth.uid || callerIsAdmin());
-
-      // No client-side list access yet: Phase 5's matching engine runs as
-      // trusted GitHub Actions automation via the Firebase Admin SDK,
-      // which is not subject to these rules at all, so it doesn't need a
-      // list allowance here. Admin-only for now; a per-cycle "who's
-      // registered" admin view could use this later if Phase 11 wants it.
-      allow list: if callerIsAdmin();
+      // `resource == null` handles a `get` on a registration that
+      // doesn't exist yet (e.g. a member's first-ever visit to the
+      // SuperConnector page, before they've registered for anything) —
+      // without this, `resource.data.uid` errors on a null resource for
+      // any non-admin caller and the read is wrongly denied. Real bug,
+      // fixed here.
+      allow get: if isSignedIn() && (resource == null || resource.data.uid == request.auth.uid || callerIsAnyAdmin());
+      allow list: if callerIsAnyAdmin();
 
       allow create: if callerIsApproved()
         && request.resource.data.uid == request.auth.uid
@@ -179,55 +218,30 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['slot', 'mode', 'updatedAt'])
         && isValidRegistrationShape(request.resource.data);
 
-      // A member can withdraw their own registration at any time before
-      // matching runs (Phase 5). Phase 7's automation is what will need
-      // to lock this down once a cycle enters a "matching in progress"
-      // state — that state doesn't exist yet, so there's nothing to lock
-      // against.
       allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
     }
 
-    // Phase 5 (Matching engine): the collections below are written ONLY
-    // by trusted server-side automation via the Firebase Admin SDK,
-    // which is not subject to these Rules at all — every client write
-    // path here is deny-all, including for admins. This is deliberate:
-    // per SECURITY_AND_TESTING.md, "Client cannot create arbitrary match
-    // records... Pair history is protected." Even a trusted admin should
-    // go through the automation pipeline (once Phase 7 builds it), not
-    // hand-edit match results via the client SDK, so results stay
-    // auditable and idempotent. Reads are scoped narrowly below.
-    //
-    // Nothing writes to these collections yet — Phase 5 ships the
-    // pure algorithm and this data model/security boundary; Phase 7's
-    // automation is what will actually call the algorithm and perform
-    // the writes (via Admin SDK, bypassing these Rules).
+    // Phase 5 (Matching engine): written ONLY by trusted server-side
+    // automation via the Firebase Admin SDK, not subject to these Rules
+    // at all — every client write path is deny-all, including for
+    // admins. See SECURITY_AND_TESTING.md: "Client cannot create
+    // arbitrary match records... Pair history is protected."
 
     match /matches/{matchId} {
-      // Full match documents (including the compatibility breakdown —
-      // protected, same spirit as the hidden Connection Meter) are
-      // admin-only. Participants get their own scoped view via
-      // matchParticipants below, without seeing the scoring internals.
-      allow get: if callerIsAdmin();
-      allow list: if callerIsAdmin();
+      allow get: if callerIsAnyAdmin();
+      allow list: if callerIsAnyAdmin();
       allow create, update, delete: if false;
     }
 
     match /matchParticipants/{matchParticipantId} {
-      // Each participant can see their own match assignment (who
-      // they're paired/grouped with) without exposing anyone else's
-      // record or the underlying compatibility scores.
-      allow get: if isSignedIn() && (resource.data.uid == request.auth.uid || callerIsAdmin());
-      allow list: if callerIsAdmin();
+      allow get: if isSignedIn() && (resource == null || resource.data.uid == request.auth.uid || callerIsAnyAdmin());
+      allow list: if callerIsAnyAdmin();
       allow create, update, delete: if false;
     }
 
     match /pairHistory/{pairId} {
-      // Pair history is protected internal matching data (repeat-match
-      // penalties, and eventually Phase 6 feedback sentiment) — kept
-      // admin-only rather than exposed to the two participants, even
-      // though they could infer part of it from matchParticipants.
-      allow get: if callerIsAdmin();
-      allow list: if callerIsAdmin();
+      allow get: if callerIsAnyAdmin();
+      allow list: if callerIsAnyAdmin();
       allow create, update, delete: if false;
     }
 

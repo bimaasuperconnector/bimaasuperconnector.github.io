@@ -7,7 +7,7 @@ import { useUserRecord } from '../context/UserRecordContext';
 
 export function LoginPage() {
   const { user, loading: authLoading, configured, signInWithGoogle } = useAuth();
-  const { record, loading: recordLoading } = useUserRecord();
+  const { record, loading: recordLoading, needsOnboarding } = useUserRecord();
   const [error, setError] = useState<string | null>(null);
   const [signingIn, setSigningIn] = useState(false);
 
@@ -15,8 +15,8 @@ export function LoginPage() {
     if (record?.status === 'approved') {
       return <Navigate to="/app" replace />;
     }
-    if (record) {
-      // pending or rejected — send to the status page rather than /app.
+    if (record || needsOnboarding) {
+      // pending, rejected, or needs the onboarding form — all live on /pending.
       return <Navigate to="/pending" replace />;
     }
   }

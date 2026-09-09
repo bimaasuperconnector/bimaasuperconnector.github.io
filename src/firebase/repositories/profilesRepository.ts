@@ -136,6 +136,7 @@ const ALLOWED_TOP_LEVEL_FIELDS = [
   'hasFounderOrg',
   'currentOrganizationName',
   'currentTitle',
+  'approved',
   'createdAt',
   'updatedAt',
 ] as const;
@@ -245,6 +246,12 @@ export async function saveOwnProfile(user: FirebaseUser, fields: ProfileFormFiel
     hasFounderOrg: fields.organizations.some((org) => org.isFounder),
     currentOrganizationName: currentOrg?.name ?? '',
     currentTitle: currentOrg?.title ?? '',
+    // Denormalized so directory list/get rules can be a cheap
+    // same-document check instead of a cross-collection lookup. Always
+    // true here — the create/update rules already independently require
+    // callerIsApproved() (or admin) before this write is even allowed —
+    // see firestore.rules for the known staleness tradeoff this implies.
+    approved: true,
     updatedAt: serverTimestamp(),
   };
   if (!existing.exists()) {
