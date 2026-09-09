@@ -235,11 +235,87 @@ service cloud.firestore {
 
     match /matchParticipants/{matchParticipantId} {
       allow get: if isSignedIn() && (resource == null || resource.data.uid == request.auth.uid || callerIsAnyAdmin());
-      allow list: if callerIsAnyAdmin();
+      // Lets a member discover their OWN match assignments (needed for
+      // the Phase 6 feedback flow — "which matches am I part of, so I
+      // know who to ask for feedback about"). Safe from the "queries
+      // are all or nothing" trap that bit profiles.list earlier: this
+      // check depends ONLY on the same document's own `uid` field, not
+      // a cross-collection lookup, so as long as the CLIENT issues the
+      // query with a matching `where('uid', '==', <their own uid>)`
+      // filter, Firestore can structurally prove every potential result
+      // satisfies the rule. See feedbackRepository.ts.
+      allow list: if callerIsAnyAdmin() || (isSignedIn() && resource.data.uid == request.auth.uid);
       allow create, update, delete: if false;
     }
 
     match /pairHistory/{pairId} {
+      allow get: if callerIsAnyAdmin();
+      allow list: if callerIsAnyAdmin();
+      allow create, update, delete: if false;
+    }
+
+    // Phase 6 (Feedback & Connection Meter).
+
+    function callerWasMatchedWith(matchId, aboutUid) {
+      return exists(/databases/$(database)/documents/matchParticipants/$(matchId + '_' + request.auth.uid))
+        && aboutUid in get(/databases/$(database)/documents/matchParticipants/$(matchId + '_' + request.auth.uid)).data.otherParticipantUids;
+    }
+
+    function isValidFeedbackShape(data) {
+      return data.matchId is string
+        && data.fromUid is string
+        && data.aboutUid is string
+        && data.cycleId is string
+        && data.cycleId.matches('^[0-9]{4}-(0[1-9]|1[0-2])$')
+        && data.sentiment in ['great', 'okay', 'not_good', 'skip']
+        && data.keys().hasOnly(['matchId', 'fromUid', 'aboutUid', 'cycleId', 'sentiment', 'createdAt', 'updatedAt']);
+    }
+
+    match /feedback/{feedbackId} {
+      // A member can read feedback THEY GAVE (to see their own history);
+      // never feedback ABOUT them — same "hidden" spirit as the
+      // Connection Meter itself. `resource == null` guard for the same
+      // reason as connectionRegistrations/matchParticipants above: a
+      // client checking "have I already given feedback about X" before
+      // any record exists must not error.
+      allow get: if isSignedIn() && (resource == null || resource.data.fromUid == request.auth.uid || callerIsAnyAdmin());
+      allow list: if callerIsAnyAdmin();
+
+      // The document ID is always `${matchId}_${fromUid}_${aboutUid}`,
+      // and `callerWasMatchedWith` independently verifies (via the
+      // caller's OWN matchParticipants record — a single-document check,
+      // not a list, so it's not at risk of the "queries are all or
+      // nothing" issue documented elsewhere in this file) that the
+      // caller was actually matched with the person they're leaving
+      // feedback about. A client cannot leave feedback about someone it
+      // was never matched with, and cannot leave feedback as anyone but
+      // itself.
+      allow create: if callerIsApproved()
+        && request.resource.data.fromUid == request.auth.uid
+        && feedbackId == (request.resource.data.matchId + '_' + request.auth.uid + '_' + request.resource.data.aboutUid)
+        && callerWasMatchedWith(request.resource.data.matchId, request.resource.data.aboutUid)
+        && isValidFeedbackShape(request.resource.data);
+
+      // A member can change their mind before Phase 7's automation
+      // processes feedback (there's no "window closed" state to check
+      // against yet — same honest non-enforcement as Phase 4's
+      // registration deadline). Can only ever touch sentiment, never
+      // reassign who the feedback is about or which match it belongs to.
+      allow update: if callerIsApproved()
+        && resource.data.fromUid == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['sentiment', 'updatedAt'])
+        && isValidFeedbackShape(request.resource.data);
+
+      allow delete: if false;
+    }
+
+    // The hidden score itself. Written ONLY by trusted server-side
+    // automation (Phase 7's feedback/score job) via the Admin SDK —
+    // deny-all for every client write, and deny-all reads too, including
+    // for the member the score belongs to: "hidden" is read literally
+    // here, not just "not client-editable." Admins can read for internal
+    // visibility/debugging.
+    match /connectionMeters/{uid} {
       allow get: if callerIsAnyAdmin();
       allow list: if callerIsAnyAdmin();
       allow create, update, delete: if false;

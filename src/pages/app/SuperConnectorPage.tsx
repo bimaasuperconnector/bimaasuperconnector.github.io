@@ -20,6 +20,7 @@ import {
   saveOwnRegistration,
   withdrawOwnRegistration,
 } from '../../firebase/repositories/registrationsRepository';
+import { PendingFeedback } from '../../components/superconnector/PendingFeedback';
 
 export function SuperConnectorPage() {
   const { user } = useAuth();
@@ -87,8 +88,9 @@ export function SuperConnectorPage() {
   }
 
   return (
-    <div className="rounded-md border border-hairline p-xl">
-      <h1 className="text-title-lg text-ink">SuperConnector</h1>
+    <>
+      <div className="rounded-md border border-hairline p-xl">
+        <h1 className="text-title-lg text-ink">SuperConnector</h1>
       <p className="mt-sm text-body-md text-body">
         This month's connections happen the weekend of{' '}
         <strong className="text-ink">{formatCycleDates(cycle)}</strong>. Register your
@@ -162,5 +164,17 @@ export function SuperConnectorPage() {
         </div>
       )}
     </div>
+
+      <div className="mt-lg rounded-md border border-hairline p-xl">
+        <h2 className="text-title-lg text-ink">Feedback on past connections</h2>
+        <p className="mt-sm text-body-md text-body">
+          Your honest feedback helps future matching — it's never shown to
+          the person you're rating.
+        </p>
+        <div className="mt-lg">
+          <PendingFeedback />
+        </div>
+      </div>
+    </>
   );
 }
