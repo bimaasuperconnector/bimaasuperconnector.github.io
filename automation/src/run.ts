@@ -1,0 +1,49 @@
+import { randomUUID } from 'node:crypto';
+import { acquireLock, releaseLock } from './lock';
+import { runCycleStateJob } from './cycleStateJob';
+import { runMatchingJob } from './matchingJob';
+import { runFeedbackScoreJob } from './feedbackScoreJob';
+import { logJobRun } from './auditLog';
+
+/**
+ * Single daily entrypoint. Per AUTOMATION.md's "Schedule caveat" —
+ * GitHub Actions scheduled workflows aren't an exact real-time
+ * scheduler — this runs once a day and each job internally decides
+ * what (if anything) is actually due, rather than assuming the cron
+ * fired at a meaningful moment.
+ *
+ * Order matters: cycle-state first (so a freshly-due transition is
+ * visible to the jobs below in the same run), then matching (acts on
+ * cycles that just closed), then feedback/score (acts on cycles whose
+ * feedback window just closed). Calendar/Meet event creation is
+ * explicitly NOT here — that's Phase 8, not built yet; see the Phase 7
+ * chat response and completion log for why that's a deliberate split.
+ */
+async function main() {
+  const runId = randomUUID();
+  const gotLock = await acquireLock(runId);
+  if (!gotLock) {
+    console.log('Another automation run is already in progress. Exiting.');
+    return;
+  }
+
+  try {
+    await runCycleStateJob();
+    await runMatchingJob();
+    await runFeedbackScoreJob();
+    console.log('Automation run completed successfully.');
+  } catch (err) {
+    console.error('Automation run failed:', err);
+    await logJobRun({
+      jobName: 'run',
+      status: 'failure',
+      summary: 'Top-level automation run failed.',
+      error: err instanceof Error ? err.message : String(err),
+    });
+    process.exitCode = 1;
+  } finally {
+    await releaseLock();
+  }
+}
+
+void main();

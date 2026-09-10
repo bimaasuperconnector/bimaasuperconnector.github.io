@@ -20,6 +20,7 @@ import {
   saveOwnRegistration,
   withdrawOwnRegistration,
 } from '../../firebase/repositories/registrationsRepository';
+import { getCycleState } from '../../firebase/repositories/cyclesRepository';
 import { PendingFeedback } from '../../components/superconnector/PendingFeedback';
 
 export function SuperConnectorPage() {
@@ -27,6 +28,7 @@ export function SuperConnectorPage() {
   const cycle = currentCycle();
 
   const [registration, setRegistration] = useState<Registration | null>(null);
+  const [registrationOpen, setRegistrationOpen] = useState(true);
   const [loading, setLoading] = useState(true);
   const [slot, setSlot] = useState<RegistrationSlot>('saturday');
   const [mode, setMode] = useState<RegistrationMode>('one_to_one');
@@ -36,14 +38,17 @@ export function SuperConnectorPage() {
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
-    getOwnRegistration(cycle.id, user.uid)
-      .then((result) => {
+    Promise.all([getOwnRegistration(cycle.id, user.uid), getCycleState(cycle.id)])
+      .then(([result, cycleState]) => {
         if (cancelled) return;
         setRegistration(result);
         if (result) {
           setSlot(result.slot);
           setMode(result.mode);
         }
+        // No cycle-state doc yet (automation hasn't run for this cycleId)
+        // defaults to open, same as the rules themselves default.
+        setRegistrationOpen(!cycleState || cycleState.status === 'registration_open');
       })
       .catch(() => {
         if (!cancelled) setError("Couldn't load your registration. Please refresh.");
@@ -109,52 +114,65 @@ export function SuperConnectorPage() {
             </p>
           )}
 
+          {!registrationOpen && (
+            <p className="rounded-sm bg-surface-soft p-md text-body-md text-body">
+              Registration for this cycle has closed — matching is starting
+              soon. {registration ? "You can still withdraw if you need to." : ''}
+            </p>
+          )}
+
           {error && <p className="text-body-md text-signature-coral">{error}</p>}
 
-          <div>
-            <p className="text-label-md text-ink">When are you available?</p>
-            <div className="mt-sm space-y-xs">
-              {REGISTRATION_SLOTS.map((s) => (
-                <label key={s} className="flex items-center gap-xs text-body-md text-body">
-                  <input
-                    type="radio"
-                    name="slot"
-                    checked={slot === s}
-                    onChange={() => setSlot(s)}
-                  />
-                  {SLOT_LABELS[s]}
-                </label>
-              ))}
+          <div className={registrationOpen ? '' : 'pointer-events-none opacity-50'}>
+            <div>
+              <p className="text-label-md text-ink">When are you available?</p>
+              <div className="mt-sm space-y-xs">
+                {REGISTRATION_SLOTS.map((s) => (
+                  <label key={s} className="flex items-center gap-xs text-body-md text-body">
+                    <input
+                      type="radio"
+                      name="slot"
+                      checked={slot === s}
+                      disabled={!registrationOpen}
+                      onChange={() => setSlot(s)}
+                    />
+                    {SLOT_LABELS[s]}
+                  </label>
+                ))}
+              </div>
             </div>
-          </div>
 
-          <div>
-            <p className="text-label-md text-ink">How would you like to connect?</p>
-            <div className="mt-sm space-y-xs">
-              {REGISTRATION_MODES.map((m) => (
-                <label key={m} className="flex items-center gap-xs text-body-md text-body">
-                  <input
-                    type="radio"
-                    name="mode"
-                    checked={mode === m}
-                    onChange={() => setMode(m)}
-                  />
-                  {MODE_LABELS[m]}
-                  {m === 'small_circle' && (
-                    <span className="text-muted">
-                      {' '}
-                      (target {SMALL_CIRCLE_TARGET}, {SMALL_CIRCLE_MIN}–{SMALL_CIRCLE_MAX} people)
-                    </span>
-                  )}
-                </label>
-              ))}
+            <div className="mt-lg">
+              <p className="text-label-md text-ink">How would you like to connect?</p>
+              <div className="mt-sm space-y-xs">
+                {REGISTRATION_MODES.map((m) => (
+                  <label key={m} className="flex items-center gap-xs text-body-md text-body">
+                    <input
+                      type="radio"
+                      name="mode"
+                      checked={mode === m}
+                      disabled={!registrationOpen}
+                      onChange={() => setMode(m)}
+                    />
+                    {MODE_LABELS[m]}
+                    {m === 'small_circle' && (
+                      <span className="text-muted">
+                        {' '}
+                        (target {SMALL_CIRCLE_TARGET}, {SMALL_CIRCLE_MIN}–{SMALL_CIRCLE_MAX} people)
+                      </span>
+                    )}
+                  </label>
+                ))}
+              </div>
             </div>
           </div>
 
           <div className="flex gap-md">
-            <Button variant="primary" onClick={() => void handleSave()} disabled={saving}>
-              {saving ? 'Saving…' : registration ? 'Update registration' : 'Register'}
-            </Button>
+            {registrationOpen && (
+              <Button variant="primary" onClick={() => void handleSave()} disabled={saving}>
+                {saving ? 'Saving…' : registration ? 'Update registration' : 'Register'}
+              </Button>
+            )}
             {registration && (
               <Button variant="secondary" onClick={() => void handleWithdraw()} disabled={saving}>
                 Withdraw

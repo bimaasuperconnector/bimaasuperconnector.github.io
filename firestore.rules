@@ -198,6 +198,18 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Phase 7 finally closes the gap Phase 4 explicitly deferred: a
+    // cycle whose connectionCycles doc says registration is no longer
+    // open rejects new registrations/changes. Defaults to ALLOWING if
+    // no cycle doc exists yet (e.g. before the cycle-state job has ever
+    // run for a brand new cycleId) — a chicken-and-egg safeguard, not a
+    // loophole, since the cycle-state job creates the doc as
+    // 'registration_open' the first time it sees a new cycle anyway.
+    function registrationIsOpenForCycle(cycleId) {
+      return !exists(/databases/$(database)/documents/connectionCycles/$(cycleId))
+        || get(/databases/$(database)/documents/connectionCycles/$(cycleId)).data.status == 'registration_open';
+    }
+
     match /connectionRegistrations/{registrationId} {
       // `resource == null` handles a `get` on a registration that
       // doesn't exist yet (e.g. a member's first-ever visit to the
@@ -211,13 +223,20 @@ service cloud.firestore {
       allow create: if callerIsApproved()
         && request.resource.data.uid == request.auth.uid
         && registrationId == (request.resource.data.cycleId + '_' + request.auth.uid)
+        && registrationIsOpenForCycle(request.resource.data.cycleId)
         && isValidRegistrationShape(request.resource.data);
 
       allow update: if callerIsApproved()
         && resource.data.uid == request.auth.uid
+        && registrationIsOpenForCycle(resource.data.cycleId)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['slot', 'mode', 'updatedAt'])
         && isValidRegistrationShape(request.resource.data);
 
+      // Withdrawal is always allowed regardless of cycle status —
+      // someone should always be able to remove themselves from
+      // consideration, even after registration nominally "closed," as
+      // long as matching hasn't produced results yet. If this becomes a
+      // real problem once real usage exists, revisit.
       allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
     }
 
@@ -316,6 +335,48 @@ service cloud.firestore {
     // here, not just "not client-editable." Admins can read for internal
     // visibility/debugging.
     match /connectionMeters/{uid} {
+      allow get: if callerIsAnyAdmin();
+      allow list: if callerIsAnyAdmin();
+      allow create, update, delete: if false;
+    }
+
+    // Phase 7 (Monthly automation).
+
+    // Not private data — the meeting dates for a cycle are already
+    // computed and shown client-side with no auth at all (Phase 4).
+    // Readable by any signed-in user; only the cycle-state job (Admin
+    // SDK) ever writes it.
+    match /connectionCycles/{cycleId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create, update, delete: if false;
+    }
+
+    // Per-user notification feed. Path-scoped to the owner, which is
+    // inherently safe (no cross-document dependency, no "all or
+    // nothing" risk) — the wildcard `uid` IS the ownership check.
+    // Only automation (Admin SDK) creates notifications. No
+    // mark-as-read update path yet — the Notifications page ships as
+    // read-only this phase; a scoped update (touching only `read`)
+    // can be added once that UX is actually wanted.
+    match /notifications/{uid}/items/{notificationId} {
+      allow get: if isSelf(uid) || callerIsAnyAdmin();
+      allow list: if isSelf(uid) || callerIsAnyAdmin();
+      allow create, update, delete: if false;
+    }
+
+    // Automation run history. Admin-only visibility; only automation
+    // (Admin SDK) writes it.
+    match /auditLogs/{logId} {
+      allow get: if callerIsAnyAdmin();
+      allow list: if callerIsAnyAdmin();
+      allow create, update, delete: if false;
+    }
+
+    // Includes the automation run-lock document (systemConfig/automationLock)
+    // and any future global config. Admin-only visibility; only
+    // automation (Admin SDK) writes it.
+    match /systemConfig/{configId} {
       allow get: if callerIsAnyAdmin();
       allow list: if callerIsAnyAdmin();
       allow create, update, delete: if false;

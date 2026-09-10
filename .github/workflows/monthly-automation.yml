@@ -1,0 +1,45 @@
+name: Monthly Automation
+
+on:
+  schedule:
+    # Runs once a day. Per AUTOMATION.md, GitHub Actions cron is not an
+    # exact real-time scheduler — each job decides internally what (if
+    # anything) is actually due, rather than trusting this fired at a
+    # precise moment. 03:00 UTC = 08:30 IST, comfortably outside
+    # daytime hours.
+    - cron: '0 3 * * *'
+  workflow_dispatch: {} # lets the owner trigger a run manually from the Actions tab
+
+permissions:
+  contents: read
+
+jobs:
+  run-automation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: automation/package-lock.json
+
+      - name: Install automation dependencies
+        working-directory: automation
+        run: npm ci
+
+      - name: Run automation
+        working-directory: automation
+        env:
+          # This is a REAL secret — the Firebase service account key
+          # JSON, not the public web client config used by deploy.yml.
+          # It grants full Admin SDK access, bypassing every Firestore
+          # Rule in this project. Stored as a GitHub Actions Secret
+          # (Settings -> Secrets and variables -> Actions -> Secrets
+          # tab), never as a repository Variable. See the chat setup
+          # instructions for how it was generated.
+          GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
+        run: npm start

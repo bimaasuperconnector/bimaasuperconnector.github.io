@@ -101,3 +101,83 @@ export function formatCycleDates(cycle: Cycle): string {
 export function isValidCycleId(id: string): boolean {
   return /^\d{4}-(0[1-9]|1[0-2])$/.test(id);
 }
+
+// --- Phase 7: cycle state & schedule (automation only) ---
+//
+// Kept separate from the calendar-date logic above, which Phase 4's UI
+// already depends on and which works correctly today — this section
+// only adds what Phase 7's automation needs, without touching that.
+
+export const CYCLE_STATUSES = [
+  'registration_open',
+  'registration_closed',
+  'matching_complete',
+  'feedback_open',
+  'archived',
+] as const;
+export type CycleStatus = (typeof CYCLE_STATUSES)[number];
+
+/** Asia/Kolkata has no daylight saving and is always exactly UTC+5:30 — per ARCHITECTURE.md's "convert to Asia/Kolkata for product logic." */
+const IST_OFFSET_MINUTES = 5 * 60 + 30;
+
+/** The UTC instant corresponding to a given Asia/Kolkata wall-clock time. */
+function istToUtc(year: number, month1to12: number, day: number, hour: number, minute: number): Date {
+  return new Date(Date.UTC(year, month1to12 - 1, day, hour, minute, 0) - IST_OFFSET_MINUTES * 60000);
+}
+
+/** How many days before the Saturday meeting registration closes. */
+export const REGISTRATION_CLOSES_DAYS_BEFORE = 2; // closes Thursday 23:59 IST
+/** How many days after the Sunday meeting the feedback window stays open. */
+export const FEEDBACK_WINDOW_DAYS = 7;
+
+export interface CycleSchedule {
+  registrationClosesAt: Date;
+  feedbackOpensAt: Date;
+  feedbackClosesAt: Date;
+}
+
+export function computeCycleSchedule(cycle: Cycle): CycleSchedule {
+  // Calendar-day arithmetic (month/year rollover handled by the Date
+  // constructor) stays timezone-agnostic; only the FINAL conversion to
+  // a precise instant is IST-anchored.
+  const closeDay = new Date(cycle.year, cycle.month - 1, cycle.saturday.getDate() - REGISTRATION_CLOSES_DAYS_BEFORE);
+  const registrationClosesAt = istToUtc(closeDay.getFullYear(), closeDay.getMonth() + 1, closeDay.getDate(), 23, 59);
+
+  const feedbackOpensAt = istToUtc(
+    cycle.sunday.getFullYear(),
+    cycle.sunday.getMonth() + 1,
+    cycle.sunday.getDate(),
+    23,
+    59,
+  );
+  const feedbackClosesAt = new Date(feedbackOpensAt.getTime() + FEEDBACK_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+
+  return { registrationClosesAt, feedbackOpensAt, feedbackClosesAt };
+}
+
+/**
+ * Pure time-based transition check. Returns the next status if `now`
+ * has crossed the relevant cutoff, or null if no transition is due yet.
+ * `registration_closed` -> `matching_complete` is deliberately NOT a
+ * time-based transition here — it only happens once the matching job
+ * has actually run and written results, which is a real side effect,
+ * not something a pure clock check should claim happened.
+ */
+export function determineNextStatus(
+  currentStatus: CycleStatus,
+  schedule: CycleSchedule,
+  now: Date,
+): CycleStatus | null {
+  switch (currentStatus) {
+    case 'registration_open':
+      return now >= schedule.registrationClosesAt ? 'registration_closed' : null;
+    case 'registration_closed':
+      return null;
+    case 'matching_complete':
+      return now >= schedule.feedbackOpensAt ? 'feedback_open' : null;
+    case 'feedback_open':
+      return now >= schedule.feedbackClosesAt ? 'archived' : null;
+    case 'archived':
+      return null;
+  }
+}
