@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { currentCycle, computeCycleSchedule, determineNextStatus } from '../cycles';
+import { currentCycle, computeCycleSchedule, determineNextStatus, meetingWindow } from '../cycles';
 
 describe('computeCycleSchedule', () => {
   it('closes registration 2 days before Saturday at 23:59 IST', () => {
@@ -65,5 +65,28 @@ describe('determineNextStatus', () => {
 
   it('archived never transitions further', () => {
     expect(determineNextStatus('archived', schedule, new Date(3000, 0, 1))).toBeNull();
+  });
+});
+
+describe('meetingWindow', () => {
+  it('computes 5:00-6:00 PM IST on the Saturday as the correct UTC instant', () => {
+    const cycle = currentCycle(new Date(2026, 8, 1)); // September 2026 -> Sept 19/20
+    const window = meetingWindow(cycle, 'saturday');
+    // 5:00 PM IST = 11:30 UTC (IST is UTC+5:30)
+    expect(window.start.toISOString()).toBe('2026-09-19T11:30:00.000Z');
+    expect(window.end.toISOString()).toBe('2026-09-19T12:30:00.000Z');
+  });
+
+  it('computes the same window correctly for Sunday', () => {
+    const cycle = currentCycle(new Date(2026, 8, 1));
+    const window = meetingWindow(cycle, 'sunday');
+    expect(window.start.toISOString()).toBe('2026-09-20T11:30:00.000Z');
+    expect(window.end.toISOString()).toBe('2026-09-20T12:30:00.000Z');
+  });
+
+  it('the meeting window is always exactly one hour', () => {
+    const cycle = currentCycle(new Date(2026, 8, 1));
+    const window = meetingWindow(cycle, 'saturday');
+    expect(window.end.getTime() - window.start.getTime()).toBe(60 * 60 * 1000);
   });
 });

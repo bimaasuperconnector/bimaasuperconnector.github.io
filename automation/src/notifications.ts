@@ -1,7 +1,7 @@
 import { Timestamp } from 'firebase-admin/firestore';
 import { db } from './firebaseAdmin';
 
-export type NotificationType = 'matched' | 'feedback_open';
+export type NotificationType = 'matched' | 'calendar_ready' | 'feedback_open';
 
 export async function createNotification(
   uid: string,

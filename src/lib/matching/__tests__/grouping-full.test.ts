@@ -58,6 +58,20 @@ describe('groupCandidates', () => {
     }
   });
 
+  it('tags each group with the correct meetingDay matching its pool', () => {
+    const sat = Array.from({ length: 3 }, (_, i) =>
+      makeCandidate({ uid: `sat${i}`, slot: 'saturday', mode: 'small_circle' }),
+    );
+    const sun = Array.from({ length: 3 }, (_, i) =>
+      makeCandidate({ uid: `sun${i}`, slot: 'sunday', mode: 'small_circle' }),
+    );
+    const { groups } = groupCandidates([...sat, ...sun], [], 3, 3, 3);
+    const satGroup = groups.find((g) => g.uids[0].startsWith('sat'));
+    const sunGroup = groups.find((g) => g.uids[0].startsWith('sun'));
+    expect(satGroup?.meetingDay).toBe('saturday');
+    expect(sunGroup?.meetingDay).toBe('sunday');
+  });
+
   it('reports everyone unmatched when the pool is below the minimum', () => {
     const candidates = Array.from({ length: 2 }, (_, i) =>
       makeCandidate({ uid: `u${i}`, slot: 'saturday', mode: 'small_circle' }),

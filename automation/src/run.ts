@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { acquireLock, releaseLock } from './lock';
 import { runCycleStateJob } from './cycleStateJob';
 import { runMatchingJob } from './matchingJob';
+import { runCalendarJob } from './calendarJob';
 import { runFeedbackScoreJob } from './feedbackScoreJob';
 import { logJobRun } from './auditLog';
 
@@ -14,10 +15,10 @@ import { logJobRun } from './auditLog';
  *
  * Order matters: cycle-state first (so a freshly-due transition is
  * visible to the jobs below in the same run), then matching (acts on
- * cycles that just closed), then feedback/score (acts on cycles whose
- * feedback window just closed). Calendar/Meet event creation is
- * explicitly NOT here — that's Phase 8, not built yet; see the Phase 7
- * chat response and completion log for why that's a deliberate split.
+ * cycles that just closed), then calendar (needs matches to exist
+ * first), then feedback/score (acts on cycles whose feedback window
+ * just closed — independent of calendar, but runs last since it's the
+ * final step in a cycle's lifecycle).
  */
 async function main() {
   const runId = randomUUID();
@@ -30,6 +31,7 @@ async function main() {
   try {
     await runCycleStateJob();
     await runMatchingJob();
+    await runCalendarJob();
     await runFeedbackScoreJob();
     console.log('Automation run completed successfully.');
   } catch (err) {

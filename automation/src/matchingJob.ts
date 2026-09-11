@@ -120,12 +120,13 @@ async function writeMatchResults(
 ): Promise<void> {
   let matchIndex = 0;
 
-  async function writeMatch(type: 'pair' | 'group', uids: string[]) {
+  async function writeMatch(type: 'pair' | 'group', uids: string[], meetingDay: 'saturday' | 'sunday') {
     const matchId = `${cycleId}_${type}_${matchIndex++}`;
     await db.collection('matches').doc(matchId).set({
       cycleId,
       type,
       participantUids: uids,
+      meetingDay,
       createdAt: Timestamp.now(),
     });
 
@@ -165,9 +166,9 @@ async function writeMatchResults(
   }
 
   for (const pair of result.pairs) {
-    await writeMatch('pair', [pair.uidA, pair.uidB]);
+    await writeMatch('pair', [pair.uidA, pair.uidB], pair.meetingDay);
   }
   for (const group of result.groups) {
-    await writeMatch('group', group.uids);
+    await writeMatch('group', group.uids, group.meetingDay);
   }
 }

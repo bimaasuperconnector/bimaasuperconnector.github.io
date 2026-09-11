@@ -66,12 +66,22 @@ export interface PairAssignment {
   uidA: string;
   uidB: string;
   breakdown: CompatibilityBreakdown;
+  /**
+   * Phase 8 addition: registration only captures a slot PREFERENCE
+   * ('saturday' | 'sunday' | 'both'), not a specific day — but a
+   * calendar event needs one concrete date. Computed in pairing.ts:
+   * whichever day both participants can actually attend, defaulting to
+   * Saturday if both said 'both' (no constraint either way).
+   */
+  meetingDay: 'saturday' | 'sunday';
 }
 
 export interface GroupAssignment {
   uids: string[];
   /** Average pairwise finalScore across all pairs within the group. */
   averageCompatibility: number;
+  /** Which slot pool (see grouping.ts's resolveSlotPools) this group was formed from — see PairAssignment.meetingDay's comment for why this exists. */
+  meetingDay: 'saturday' | 'sunday';
 }
 
 export interface CycleMatchResult {

@@ -67,4 +67,25 @@ describe('pairCandidates', () => {
       noHistory.pairs[0].breakdown.finalScore,
     );
   });
+
+  it('meetingDay follows a fixed preference when one side is fixed', () => {
+    const a = makeCandidate({ uid: 'a', slot: 'saturday' });
+    const b = makeCandidate({ uid: 'b', slot: 'both' });
+    const { pairs } = pairCandidates([a, b], []);
+    expect(pairs[0].meetingDay).toBe('saturday');
+  });
+
+  it('meetingDay respects a fixed Sunday preference', () => {
+    const a = makeCandidate({ uid: 'a', slot: 'sunday' });
+    const b = makeCandidate({ uid: 'b', slot: 'both' });
+    const { pairs } = pairCandidates([a, b], []);
+    expect(pairs[0].meetingDay).toBe('sunday');
+  });
+
+  it('meetingDay defaults to Saturday when both are flexible', () => {
+    const a = makeCandidate({ uid: 'a', slot: 'both' });
+    const b = makeCandidate({ uid: 'b', slot: 'both' });
+    const { pairs } = pairCandidates([a, b], []);
+    expect(pairs[0].meetingDay).toBe('saturday');
+  });
 });

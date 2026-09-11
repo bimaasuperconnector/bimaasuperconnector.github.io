@@ -13,6 +13,19 @@ export function slotsCompatible(a: RegistrationSlot, b: RegistrationSlot): boole
 }
 
 /**
+ * Given two slot-compatible candidates, picks the specific day their
+ * meeting happens on. If either has a fixed preference, that day wins
+ * (slotsCompatible already guarantees they don't conflict). If both
+ * said 'both', defaults to Saturday — an arbitrary but harmless choice
+ * since neither has a constraint either way.
+ */
+function pickMeetingDay(a: RegistrationSlot, b: RegistrationSlot): 'saturday' | 'sunday' {
+  if (a === 'saturday' || b === 'saturday') return 'saturday';
+  if (a === 'sunday' || b === 'sunday') return 'sunday';
+  return 'saturday';
+}
+
+/**
  * Greedy maximum-weight pairing: score every valid (slot-compatible)
  * pair, sort descending, then walk the list assigning the
  * highest-scoring pair first and skipping anyone already assigned.
@@ -36,7 +49,7 @@ export function pairCandidates(
       const b = candidates[j];
       if (!slotsCompatible(a.slot, b.slot)) continue;
       const breakdown = computeCompatibility(a, b, pairHistory);
-      scored.push({ uidA: a.uid, uidB: b.uid, breakdown });
+      scored.push({ uidA: a.uid, uidB: b.uid, breakdown, meetingDay: pickMeetingDay(a.slot, b.slot) });
     }
   }
 

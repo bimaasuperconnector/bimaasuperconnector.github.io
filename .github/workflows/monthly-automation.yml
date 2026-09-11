@@ -42,4 +42,12 @@ jobs:
           # tab), never as a repository Variable. See the chat setup
           # instructions for how it was generated.
           GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
+          # Phase 8: authorizes bimaasuperconnector@gmail.com to create
+          # Calendar events/Meet links as itself (never anyone's
+          # password). All three are real secrets. If any are unset,
+          # calendarJob.ts logs and skips gracefully rather than
+          # failing the whole run — Phases 1-7 keep working either way.
+          GOOGLE_CALENDAR_CLIENT_ID: ${{ secrets.GOOGLE_CALENDAR_CLIENT_ID }}
+          GOOGLE_CALENDAR_CLIENT_SECRET: ${{ secrets.GOOGLE_CALENDAR_CLIENT_SECRET }}
+          GOOGLE_CALENDAR_REFRESH_TOKEN: ${{ secrets.GOOGLE_CALENDAR_REFRESH_TOKEN }}
         run: npm start

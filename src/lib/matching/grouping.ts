@@ -103,6 +103,7 @@ function growGroups(
   pool: MatchCandidate[],
   sizes: number[],
   pairHistory: PairHistoryRecord[],
+  meetingDay: 'saturday' | 'sunday',
 ): GroupAssignment[] {
   const remaining = [...pool].sort((a, b) => a.uid.localeCompare(b.uid));
   const groups: GroupAssignment[] = [];
@@ -142,6 +143,7 @@ function growGroups(
     groups.push({
       uids: members.map((m) => m.uid),
       averageCompatibility: pairCount > 0 ? pairSum / pairCount : 0,
+      meetingDay,
     });
   }
 
@@ -159,9 +161,12 @@ export function groupCandidates(
   const groups: GroupAssignment[] = [];
   const unmatched: string[] = [];
 
-  for (const pool of [saturdayPool, sundayPool]) {
+  for (const [pool, meetingDay] of [
+    [saturdayPool, 'saturday'] as const,
+    [sundayPool, 'sunday'] as const,
+  ]) {
     const { sizes, unmatchedCount } = computeGroupSizes(pool.length, target, min, max);
-    const poolGroups = growGroups(pool, sizes, pairHistory);
+    const poolGroups = growGroups(pool, sizes, pairHistory, meetingDay);
     groups.push(...poolGroups);
 
     const placedUids = new Set(poolGroups.flatMap((g) => g.uids));

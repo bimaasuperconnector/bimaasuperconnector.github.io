@@ -121,7 +121,7 @@ export type CycleStatus = (typeof CYCLE_STATUSES)[number];
 const IST_OFFSET_MINUTES = 5 * 60 + 30;
 
 /** The UTC instant corresponding to a given Asia/Kolkata wall-clock time. */
-function istToUtc(year: number, month1to12: number, day: number, hour: number, minute: number): Date {
+export function istToUtc(year: number, month1to12: number, day: number, hour: number, minute: number): Date {
   return new Date(Date.UTC(year, month1to12 - 1, day, hour, minute, 0) - IST_OFFSET_MINUTES * 60000);
 }
 
@@ -180,4 +180,30 @@ export function determineNextStatus(
     case 'archived':
       return null;
   }
+}
+
+// --- Phase 8: meeting time (calendar events) ---
+
+/** Every SuperConnector meeting slot is 5:00–6:00 PM IST, per FEATURE_SUPERCONNECTOR.md's Phase 4 spec — matches SLOT_LABELS above. */
+export const MEETING_START_HOUR_IST = 17;
+export const MEETING_END_HOUR_IST = 18;
+
+export interface MeetingWindow {
+  start: Date;
+  end: Date;
+}
+
+/**
+ * The precise UTC start/end instant for a match's meeting, given which
+ * concrete day (see matching/types.ts's `meetingDay`) it falls on.
+ */
+export function meetingWindow(cycle: Cycle, day: 'saturday' | 'sunday'): MeetingWindow {
+  const meetingDate = day === 'saturday' ? cycle.saturday : cycle.sunday;
+  const year = meetingDate.getFullYear();
+  const month1to12 = meetingDate.getMonth() + 1;
+  const date = meetingDate.getDate();
+  return {
+    start: istToUtc(year, month1to12, date, MEETING_START_HOUR_IST, 0),
+    end: istToUtc(year, month1to12, date, MEETING_END_HOUR_IST, 0),
+  };
 }
