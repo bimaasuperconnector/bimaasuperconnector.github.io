@@ -382,6 +382,76 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
+    // Phase 9 (Jobs).
+
+    function isValidJobShape(data) {
+      return data.postedByUid is string
+        && data.postedByDisplayName is string
+        && data.company is string && data.company.size() > 0 && data.company.size() <= 200
+        && data.title is string && data.title.size() > 0 && data.title.size() <= 200
+        && data.location is string && data.location.size() > 0 && data.location.size() <= 200
+        && data.employmentType in ['full_time', 'part_time', 'contract', 'internship', 'freelance']
+        && data.urgency in ['urgent', 'standard']
+        && data.description is string && data.description.size() > 0 && data.description.size() <= 3000
+        && data.skills is list && data.skills.size() <= 20
+        && data.experienceLevel is string && data.experienceLevel.size() <= 200
+        && data.contactPerson is string && data.contactPerson.size() > 0 && data.contactPerson.size() <= 200
+        && data.contactDetails is string && data.contactDetails.size() > 0 && data.contactDetails.size() <= 300
+        && data.applicationMethod is string && data.applicationMethod.size() > 0 && data.applicationMethod.size() <= 500
+        && data.expirationDate is timestamp
+        && data.status in ['pending', 'approved', 'rejected', 'archived']
+        && data.keys().hasOnly(
+             ['postedByUid', 'postedByDisplayName', 'company', 'title', 'location', 'employmentType',
+              'urgency', 'description', 'skills', 'experienceLevel', 'contactPerson', 'contactDetails',
+              'applicationMethod', 'expirationDate', 'status', 'createdAt', 'updatedAt']
+           );
+    }
+
+    match /jobs/{jobId} {
+      // Approved postings are visible to any approved member (the
+      // active jobs board); a poster can always see their own
+      // regardless of status (to track pending/rejected/archived);
+      // admins can see everything (moderation queue). Both `list`
+      // branches below match the query filter structurally
+      // (status=='approved', or postedByUid==caller) — the same safe
+      // "author == uid" pattern used elsewhere in this file, not the
+      // fragile cross-collection pattern that caused the 2026-09-08
+      // directory outage.
+      allow get: if (
+        callerIsApproved()
+        && (resource.data.status == 'approved' || resource.data.postedByUid == request.auth.uid)
+      ) || callerIsAnyAdmin();
+      allow list: if callerIsAnyAdmin()
+        || (callerIsApproved()
+            && (resource.data.status == 'approved' || resource.data.postedByUid == request.auth.uid));
+
+      allow create: if callerIsApproved()
+        && request.resource.data.postedByUid == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.expirationDate > request.time
+        && isValidJobShape(request.resource.data);
+
+      // Either the poster edits their own content (status can't be
+      // touched this way — moderation is a separate, admin-only path
+      // below) OR an admin moderates (status/updatedAt only, can't
+      // rewrite the posting's content while doing so).
+      allow update: if (
+        callerIsApproved()
+        && resource.data.postedByUid == request.auth.uid
+        && request.resource.data.postedByUid == request.auth.uid
+        && request.resource.data.status == resource.data.status
+        && isValidJobShape(request.resource.data)
+      ) || (
+        callerIsAnyAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt'])
+        && request.resource.data.status in ['pending', 'approved', 'rejected', 'archived']
+      );
+
+      // A poster can withdraw their own listing at any time; an admin
+      // can remove any listing (e.g. a policy violation).
+      allow delete: if (isSignedIn() && resource.data.postedByUid == request.auth.uid) || callerIsAnyAdmin();
+    }
+
     // Everything else stays deny-by-default until a later phase defines
     // its own narrowly-scoped rules here (see ARCHITECTURE.md's
     // suggested collections list).

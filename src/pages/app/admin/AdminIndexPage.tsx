@@ -7,6 +7,12 @@ import {
   setUserStatus,
   subscribeToPendingUsers,
 } from '../../../firebase/repositories/usersRepository';
+import {
+  EMPLOYMENT_TYPE_LABELS,
+  type Job,
+  queryPendingJobs,
+  setJobStatus,
+} from '../../../firebase/repositories/jobsRepository';
 
 export function AdminIndexPage() {
   const { record } = useUserRecord();
@@ -15,6 +21,28 @@ export function AdminIndexPage() {
   const [loading, setLoading] = useState(true);
   const [actioningUid, setActioningUid] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const [pendingJobs, setPendingJobs] = useState<Job[]>([]);
+  const [jobsLoading, setJobsLoading] = useState(true);
+  const [actioningJobId, setActioningJobId] = useState<string | null>(null);
+
+  useEffect(() => {
+    queryPendingJobs()
+      .then(setPendingJobs)
+      .finally(() => setJobsLoading(false));
+  }, []);
+
+  async function handleJobDecision(jobId: string, status: 'approved' | 'rejected') {
+    setActioningJobId(jobId);
+    try {
+      await setJobStatus(jobId, status);
+      setPendingJobs((prev) => prev.filter((j) => j.id !== jobId));
+    } catch {
+      setError("Couldn't update that job posting.");
+    } finally {
+      setActioningJobId(null);
+    }
+  }
 
   useEffect(() => {
     // A batch_admin's console view is scoped to their own assigned
@@ -50,6 +78,7 @@ export function AdminIndexPage() {
   }
 
   return (
+    <>
     <div className="rounded-md border border-hairline p-xl">
       <h1 className="text-title-lg text-ink">Pending approvals</h1>
       <p className="mt-sm text-body-md text-body">
@@ -114,5 +143,54 @@ export function AdminIndexPage() {
         </ul>
       )}
     </div>
+
+    <div className="mt-lg rounded-md border border-hairline p-xl">
+      <h1 className="text-title-lg text-ink">Pending job postings</h1>
+      <p className="mt-sm text-body-md text-body">
+        New job postings wait here until approved, then appear on the Jobs board.
+      </p>
+
+      {jobsLoading ? (
+        <p className="mt-lg text-body-md text-muted">Loading…</p>
+      ) : pendingJobs.length === 0 ? (
+        <p className="mt-lg text-body-md text-muted">No pending job postings right now.</p>
+      ) : (
+        <ul className="mt-lg space-y-md">
+          {pendingJobs.map((job) => (
+            <li key={job.id} className="rounded-sm border border-hairline p-md">
+              <div className="flex items-start justify-between gap-md">
+                <div>
+                  <p className="text-label-md text-ink">{job.title}</p>
+                  <p className="text-body-md text-muted">
+                    {job.company} · {job.location} · {EMPLOYMENT_TYPE_LABELS[job.employmentType]}
+                  </p>
+                  <p className="mt-xs text-body-md text-body">{job.description}</p>
+                  <p className="mt-xs text-caption text-muted">Posted by {job.postedByDisplayName}</p>
+                </div>
+                <div className="flex shrink-0 gap-sm">
+                  <Button
+                    variant="secondary"
+                    className="px-md py-xs"
+                    disabled={actioningJobId === job.id}
+                    onClick={() => void handleJobDecision(job.id, 'rejected')}
+                  >
+                    Reject
+                  </Button>
+                  <Button
+                    variant="primary"
+                    className="px-md py-xs"
+                    disabled={actioningJobId === job.id}
+                    onClick={() => void handleJobDecision(job.id, 'approved')}
+                  >
+                    Approve
+                  </Button>
+                </div>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+    </>
   );
 }

@@ -4,6 +4,7 @@ import { runCycleStateJob } from './cycleStateJob';
 import { runMatchingJob } from './matchingJob';
 import { runCalendarJob } from './calendarJob';
 import { runFeedbackScoreJob } from './feedbackScoreJob';
+import { runJobsCleanupJob } from './jobsCleanupJob';
 import { logJobRun } from './auditLog';
 
 /**
@@ -13,12 +14,12 @@ import { logJobRun } from './auditLog';
  * what (if anything) is actually due, rather than assuming the cron
  * fired at a meaningful moment.
  *
- * Order matters: cycle-state first (so a freshly-due transition is
- * visible to the jobs below in the same run), then matching (acts on
- * cycles that just closed), then calendar (needs matches to exist
- * first), then feedback/score (acts on cycles whose feedback window
- * just closed — independent of calendar, but runs last since it's the
- * final step in a cycle's lifecycle).
+ * Order: cycle-state first (so a freshly-due transition is visible to
+ * the jobs below in the same run), then matching (acts on cycles that
+ * just closed), then calendar (needs matches to exist first), then
+ * feedback/score, then jobs-cleanup last (independent of cycles
+ * entirely, so its position doesn't matter much — kept at the end for
+ * readability).
  */
 async function main() {
   const runId = randomUUID();
@@ -33,6 +34,7 @@ async function main() {
     await runMatchingJob();
     await runCalendarJob();
     await runFeedbackScoreJob();
+    await runJobsCleanupJob();
     console.log('Automation run completed successfully.');
   } catch (err) {
     console.error('Automation run failed:', err);
