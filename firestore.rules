@@ -73,6 +73,9 @@ service cloud.firestore {
            )
         && data.links is map
         && data.isComplete is bool
+        && data.openToWork is bool
+        && data.openToWorkRoles is list && data.openToWorkRoles.size() <= 10
+        && data.openToWorkNote is string && data.openToWorkNote.size() <= 500
         && data.hasFounderOrg is bool
         && data.currentOrganizationName is string && data.currentOrganizationName.size() <= 200
         && data.currentTitle is string && data.currentTitle.size() <= 200
@@ -94,8 +97,8 @@ service cloud.firestore {
              ['uid', 'displayName', 'displayNameLower', 'photoURL', 'batchNumber', 'headline',
               'bio', 'location', 'locationLower', 'organizations', 'education', 'skills',
               'skillsLower', 'interests', 'interestsLower', 'networkingPurpose', 'links',
-              'isComplete', 'hasFounderOrg', 'currentOrganizationName', 'currentTitle',
-              'approved', 'createdAt', 'updatedAt']
+              'isComplete', 'openToWork', 'openToWorkRoles', 'openToWorkNote', 'hasFounderOrg',
+              'currentOrganizationName', 'currentTitle', 'approved', 'createdAt', 'updatedAt']
            );
     }
 

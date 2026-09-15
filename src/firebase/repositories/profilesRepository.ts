@@ -85,6 +85,20 @@ export interface ProfileFormFields {
   networkingPurpose: NetworkingPurpose[];
   links: ProfileLinks;
   isComplete: boolean;
+  /**
+   * Phase 10 addition: member-controlled toggle, per
+   * FEATURE_SUPERCONNECTOR.md's Phase 10 spec ("Member-controlled toggle
+   * and filters. Never expose hidden Connection Meter."). The
+   * Connection Meter constraint is satisfied structurally — it isn't
+   * part of Profile at all, it lives in the fully admin-only
+   * `connectionMeters` collection (Phase 6) — nothing here touches
+   * that boundary.
+   */
+  openToWork: boolean;
+  /** Desired role types, e.g. "Product Manager", "Backend Engineer" — a tag array, same pattern as skills/interests. Only meaningful when openToWork is true. */
+  openToWorkRoles: string[];
+  /** Optional free-text note, e.g. availability or constraints. */
+  openToWorkNote: string;
 }
 
 /**
@@ -133,6 +147,9 @@ const ALLOWED_TOP_LEVEL_FIELDS = [
   'networkingPurpose',
   'links',
   'isComplete',
+  'openToWork',
+  'openToWorkRoles',
+  'openToWorkNote',
   'hasFounderOrg',
   'currentOrganizationName',
   'currentTitle',
@@ -174,6 +191,9 @@ function fromSnapshot(uid: string, data: DocumentData): Profile {
       website: data.links?.website ?? '',
     },
     isComplete: data.isComplete === true,
+    openToWork: data.openToWork === true,
+    openToWorkRoles: Array.isArray(data.openToWorkRoles) ? data.openToWorkRoles : [],
+    openToWorkNote: data.openToWorkNote ?? '',
     hasFounderOrg: data.hasFounderOrg === true,
     currentOrganizationName: data.currentOrganizationName ?? '',
     currentTitle: data.currentTitle ?? '',
@@ -200,6 +220,9 @@ export function emptyProfile(uid: string): Profile {
     networkingPurpose: [],
     links: { linkedin: '', website: '' },
     isComplete: false,
+    openToWork: false,
+    openToWorkRoles: [],
+    openToWorkNote: '',
     hasFounderOrg: false,
     currentOrganizationName: '',
     currentTitle: '',
@@ -277,7 +300,15 @@ export async function saveOwnProfile(user: FirebaseUser, fields: ProfileFormFiel
 // intentionally not supported in this phase; it would multiply the
 // number of composite indexes needed for every combination.
 
-export type DirectoryMode = 'all' | 'batch' | 'name' | 'location' | 'skill' | 'interest' | 'founders';
+export type DirectoryMode =
+  | 'all'
+  | 'batch'
+  | 'name'
+  | 'location'
+  | 'skill'
+  | 'interest'
+  | 'founders'
+  | 'openToWork';
 
 export interface DirectoryQueryOptions {
   mode: DirectoryMode;
@@ -307,6 +338,14 @@ export async function queryDirectory(options: DirectoryQueryOptions): Promise<Di
       break;
     case 'founders':
       constraints.push(where('hasFounderOrg', '==', true));
+      constraints.push(orderBy('displayNameLower'));
+      break;
+    case 'openToWork':
+      // Closes the gap Phase 3 explicitly deferred ("Open to Work has
+      // no filter because that feature is Phase 10 — the underlying
+      // data doesn't exist yet"). Same safe pattern as 'founders': a
+      // plain indexed equality filter, not a cross-collection lookup.
+      constraints.push(where('openToWork', '==', true));
       constraints.push(orderBy('displayNameLower'));
       break;
     case 'skill':

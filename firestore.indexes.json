@@ -20,6 +20,14 @@
       "collectionGroup": "profiles",
       "queryScope": "COLLECTION",
       "fields": [
+        { "fieldPath": "openToWork", "order": "ASCENDING" },
+        { "fieldPath": "displayNameLower", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "profiles",
+      "queryScope": "COLLECTION",
+      "fields": [
         { "fieldPath": "skillsLower", "arrayConfig": "CONTAINS" },
         { "fieldPath": "displayNameLower", "order": "ASCENDING" }
       ]

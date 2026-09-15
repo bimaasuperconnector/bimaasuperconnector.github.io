@@ -18,11 +18,18 @@ export function DirectoryProfileCard({ profile }: { profile: Profile }) {
           </p>
           {batch && <p className="text-body-md text-muted">{batch.label}</p>}
         </div>
-        {profile.hasFounderOrg && (
-          <span className="ml-auto shrink-0 rounded-sm bg-signature-cream px-xs py-xxs text-caption text-ink">
-            Founder
-          </span>
-        )}
+        <div className="ml-auto flex shrink-0 gap-xs">
+          {profile.hasFounderOrg && (
+            <span className="rounded-sm bg-signature-cream px-xs py-xxs text-caption text-ink">
+              Founder
+            </span>
+          )}
+          {profile.openToWork && (
+            <span className="rounded-sm bg-signature-mint px-xs py-xxs text-caption text-ink">
+              Open to Work
+            </span>
+          )}
+        </div>
       </div>
 
       {profile.headline && <p className="mt-sm text-body-md text-body">{profile.headline}</p>}
@@ -38,6 +45,16 @@ export function DirectoryProfileCard({ profile }: { profile: Profile }) {
 
       {profile.skills.length > 0 && (
         <p className="mt-sm text-body-md text-body">{profile.skills.slice(0, 6).join(', ')}</p>
+      )}
+
+      {profile.openToWork && profile.openToWorkRoles.length > 0 && (
+        <p className="mt-sm text-body-md text-body">
+          <span className="text-muted">Looking for: </span>
+          {profile.openToWorkRoles.join(', ')}
+        </p>
+      )}
+      {profile.openToWork && profile.openToWorkNote && (
+        <p className="mt-xs text-body-md text-muted">{profile.openToWorkNote}</p>
       )}
     </div>
   );
