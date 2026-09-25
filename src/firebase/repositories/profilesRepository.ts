@@ -64,8 +64,37 @@ export const NETWORKING_PURPOSE_LABELS: Record<NetworkingPurpose, string> = {
   reconnecting: 'Just reconnecting',
 };
 
+/**
+ * The four contact channels a member can optionally reveal to fellow
+ * alumni. Keys present here are exactly the channels currently visible
+ * to other members — see profileContactsRepository.ts, which owns the
+ * raw values + per-channel visibility toggles in the separate,
+ * owner-only `profileContacts/{uid}` document. This map is the
+ * PUBLIC-safe subset denormalized onto the profile itself so Directory/
+ * Open to Work cards can render a contact button at zero extra
+ * Firestore read cost (the profile doc is already being fetched for
+ * every card shown) instead of an extra per-profile-viewed read.
+ */
+export interface ContactVisibleMap {
+  phone?: string;
+  whatsapp?: string;
+  email?: string;
+  linkedin?: string;
+}
+
 /** Fields the profile owner edits directly. */
 export interface ProfileFormFields {
+  /**
+   * Phase 2/11 revision (2026-09-13): a real, owner-editable name field —
+   * fixes both the "Unnamed alum" bug (this could previously go blank
+   * if the Firebase Auth displayName was ever empty) and the lack of
+   * any way to update a name after e.g. marriage. Seeded once from the
+   * onboarding name (`users/{uid}.displayName`, which is immutable
+   * after onboarding) the first time a profile is created, then fully
+   * owner-controlled from then on — no longer silently overwritten
+   * from the Google account's live displayName on every save.
+   */
+  displayName: string;
   batchNumber: number | null;
   headline: string;
   bio: string;
@@ -102,20 +131,20 @@ export interface ProfileFormFields {
 }
 
 /**
- * Full stored/read shape. Includes denormalized fields written
- * automatically by `saveOwnProfile` (never edited directly by the form):
- * `displayName`/`photoURL` (mirrored from the Google account so the
- * Directory never has to read the access-restricted `users` collection),
- * lowercase copies for case-insensitive matching, and a couple of derived
- * fields that make common Directory filters a single indexed query
- * instead of a client-side scan. See ARCHITECTURE.md: "Claude may refine
- * this schema when implementing phases, but must document schema
+ * Full stored/read shape. `displayName` is owner-edited (see
+ * ProfileFormFields above); everything else here is denormalized and
+ * written automatically by `saveOwnProfile`: `photoURL` (mirrored from
+ * the Google account — there's no separate upload flow, see Phase 0's
+ * Storage decision), lowercase copies for case-insensitive matching,
+ * `contactVisible` (see ContactVisibleMap above), and a couple of
+ * derived fields that make common Directory filters a single indexed
+ * query instead of a client-side scan. See ARCHITECTURE.md: "Claude may
+ * refine this schema when implementing phases, but must document schema
  * changes" — this is that documentation; see the Phase 3 completion log
  * in FEATURE_SUPERCONNECTOR.md for the full rationale.
  */
 export interface Profile extends ProfileFormFields {
   uid: string;
-  displayName: string;
   displayNameLower: string;
   photoURL: string | null;
   locationLower: string;
@@ -126,6 +155,7 @@ export interface Profile extends ProfileFormFields {
   /** Denormalized from the organizations entry with endYear === null, for card display and same-page refine — not itself queried. */
   currentOrganizationName: string;
   currentTitle: string;
+  contactVisible: ContactVisibleMap;
 }
 
 const ALLOWED_TOP_LEVEL_FIELDS = [
@@ -154,6 +184,7 @@ const ALLOWED_TOP_LEVEL_FIELDS = [
   'currentOrganizationName',
   'currentTitle',
   'approved',
+  'contactVisible',
   'createdAt',
   'updatedAt',
 ] as const;
@@ -197,14 +228,28 @@ function fromSnapshot(uid: string, data: DocumentData): Profile {
     hasFounderOrg: data.hasFounderOrg === true,
     currentOrganizationName: data.currentOrganizationName ?? '',
     currentTitle: data.currentTitle ?? '',
+    contactVisible: {
+      phone: typeof data.contactVisible?.phone === 'string' ? data.contactVisible.phone : undefined,
+      whatsapp:
+        typeof data.contactVisible?.whatsapp === 'string' ? data.contactVisible.whatsapp : undefined,
+      email: typeof data.contactVisible?.email === 'string' ? data.contactVisible.email : undefined,
+      linkedin:
+        typeof data.contactVisible?.linkedin === 'string' ? data.contactVisible.linkedin : undefined,
+    },
   };
 }
 
-export function emptyProfile(uid: string): Profile {
+/**
+ * `seedDisplayName` prefills the name field for a brand-new profile —
+ * pass the onboarding name (`users/{uid}.displayName`, already loaded
+ * via UserRecordContext with zero extra reads) so a first-time editor
+ * doesn't start from a blank "Unnamed alum" state.
+ */
+export function emptyProfile(uid: string, seedDisplayName = ''): Profile {
   return {
     uid,
-    displayName: '',
-    displayNameLower: '',
+    displayName: seedDisplayName,
+    displayNameLower: seedDisplayName.toLowerCase(),
     photoURL: null,
     batchNumber: null,
     headline: '',
@@ -226,6 +271,7 @@ export function emptyProfile(uid: string): Profile {
     hasFounderOrg: false,
     currentOrganizationName: '',
     currentTitle: '',
+    contactVisible: {},
   };
 }
 
@@ -246,23 +292,35 @@ export function subscribeToProfile(
 /**
  * Create-or-update, always scoped to the caller's own uid by Firestore
  * Rules (see firestore.rules). Takes the signed-in `FirebaseUser` (not
- * just a uid) so `displayName`/`photoURL` can be mirrored from the Google
- * account automatically — the form never edits those two fields itself.
- * `ALLOWED_TOP_LEVEL_FIELDS` mirrors the field allow-list enforced in
- * firestore.rules as a client-side sanity check, not the security
- * boundary.
+ * just a uid) so `photoURL` can still be mirrored from the Google
+ * account automatically (no upload flow exists — see Phase 0's Storage
+ * decision) and so a still-blank name has a sane fallback. `displayName`
+ * itself is now owner-edited (Phase 2/11 revision) and simply passed
+ * through from `fields`. `ALLOWED_TOP_LEVEL_FIELDS` mirrors the field
+ * allow-list enforced in firestore.rules as a client-side sanity check,
+ * not the security boundary.
  */
 export async function saveOwnProfile(user: FirebaseUser, fields: ProfileFormFields): Promise<void> {
   const uid = user.uid;
   const existing = await getDoc(profileDocRef(uid));
 
+  // Phase 2/11 revision: `displayName` is now the owner-edited value in
+  // `fields` (a real "Name" field in the Profile form), NOT re-derived
+  // from the live Google Auth displayName on every save — that
+  // overwrite is exactly what caused a saved name to silently
+  // disappear/reset, and gave members no way to update a changed name
+  // (e.g. after marriage) independent of their Google account. Falls
+  // back to the Google account's name only if the field is somehow
+  // still blank (shouldn't happen once the form requires it), so a save
+  // never produces the empty string firestore.rules now rejects anyway.
+  const name = fields.displayName.trim() || user.displayName?.trim() || '';
   const currentOrg = fields.organizations.find((org) => org.endYear === null);
   const payload: Record<string, unknown> = {
     uid,
-    displayName: user.displayName ?? '',
-    displayNameLower: (user.displayName ?? '').toLowerCase(),
     photoURL: user.photoURL ?? null,
     ...fields,
+    displayName: name,
+    displayNameLower: name.toLowerCase(),
     locationLower: fields.location.toLowerCase(),
     skillsLower: fields.skills.map((s) => s.toLowerCase()),
     interestsLower: fields.interests.map((s) => s.toLowerCase()),

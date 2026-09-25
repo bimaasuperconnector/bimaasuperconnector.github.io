@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useUserRecord } from '../../context/UserRecordContext';
 import { Button } from '../../components/ui/Button';
 import { TagInput } from '../../components/profile/TagInput';
 import { OrganizationsEditor } from '../../components/profile/OrganizationsEditor';
 import { EducationEditor } from '../../components/profile/EducationEditor';
+import { ContactPrivacyEditor } from '../../components/profile/ContactPrivacyEditor';
+import { ContactButtons } from '../../components/directory/ContactButtons';
 import { allBatches, findBatch } from '../../lib/batches';
 import {
   type Profile,
@@ -13,12 +16,20 @@ import {
   getProfile,
   saveOwnProfile,
 } from '../../firebase/repositories/profilesRepository';
+import {
+  type ProfileContact,
+  emptyProfileContact,
+  getOwnProfileContact,
+  saveOwnProfileContact,
+} from '../../firebase/repositories/profileContactsRepository';
 
 const BATCHES = allBatches();
 
 export function ProfilePage() {
   const { user } = useAuth();
+  const { record } = useUserRecord();
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [contact, setContact] = useState<ProfileContact>(emptyProfileContact());
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -27,11 +38,33 @@ export function ProfilePage() {
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
-    getProfile(user.uid)
-      .then((result) => {
+    // Both reads happen in parallel — this is still exactly one read of
+    // profiles/{uid} and one read of profileContacts/{uid}, the same as
+    // if they were sequential; running them together only saves
+    // latency, not quota, and only ever runs on the OWNER's own Profile
+    // page (never once per Directory card viewed).
+    Promise.all([getProfile(user.uid), getOwnProfileContact(user.uid)])
+      .then(([profileResult, contactResult]) => {
         if (cancelled) return;
-        setProfile(result ?? emptyProfile(user.uid));
-        setEditing(!result); // no profile yet -> go straight to edit mode
+        // Seed a brand-new profile's name from the onboarding name
+        // (users/{uid}.displayName, already loaded via UserRecordContext
+        // — zero extra reads) rather than starting blank, which is what
+        // produced "Unnamed alum" before a member's first resave.
+        setProfile(
+          profileResult ?? emptyProfile(user.uid, record?.displayName ?? user.displayName ?? ''),
+        );
+        // Self-healing migration: if there's no contact doc yet but an
+        // old public `links.linkedin` value exists (pre-revision), carry
+        // it over as the starting LinkedIn value (still private/off by
+        // default until the member explicitly turns it back on) rather
+        // than silently losing it.
+        setContact(
+          contactResult ?? {
+            ...emptyProfileContact(),
+            linkedinUrl: profileResult?.links.linkedin ?? '',
+          },
+        );
+        setEditing(!profileResult); // no profile yet -> go straight to edit mode
       })
       .catch(() => {
         if (!cancelled) setError("Couldn't load your profile. Please refresh.");
@@ -42,6 +75,7 @@ export function ProfilePage() {
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   async function handleSave() {
@@ -49,8 +83,10 @@ export function ProfilePage() {
     setError(null);
     setSaving(true);
     try {
-      const isComplete = profile.batchNumber !== null && profile.headline.trim() !== '';
+      const isComplete =
+        profile.displayName.trim() !== '' && profile.batchNumber !== null && profile.headline.trim() !== '';
       await saveOwnProfile(user, { ...profile, isComplete });
+      await saveOwnProfileContact(user.uid, contact);
       setProfile({ ...profile, isComplete });
       setEditing(false);
     } catch {
@@ -75,7 +111,7 @@ export function ProfilePage() {
               <img src={user.photoURL} alt="" className="h-16 w-16 rounded-full" />
             )}
             <div>
-              <h1 className="text-title-lg text-ink">{user?.displayName}</h1>
+              <h1 className="text-title-lg text-ink">{profile.displayName || 'Add your name'}</h1>
               {profile.headline && <p className="text-body-md text-body">{profile.headline}</p>}
               {batch && <p className="text-body-md text-muted">{batch.label}</p>}
             </div>
@@ -87,9 +123,16 @@ export function ProfilePage() {
 
         {!profile.isComplete && (
           <p className="mt-lg rounded-sm bg-surface-soft p-md text-body-md text-body">
-            Your profile isn't complete yet. Add your batch and a headline so
-            other alumni can find you once the directory launches.
+            Your profile isn't complete yet. Add your name, batch and a headline
+            so other alumni can find you in the directory.
           </p>
+        )}
+
+        {(contact.visibility.phone || contact.visibility.whatsapp || contact.visibility.email || contact.visibility.linkedin) && (
+          <div className="mt-lg">
+            <p className="text-caption text-muted">Fellow alumni will see:</p>
+            <ContactButtons contact={profile.contactVisible} />
+          </div>
         )}
 
         {profile.bio && <p className="mt-lg text-body-md text-body">{profile.bio}</p>}
@@ -158,6 +201,26 @@ export function ProfilePage() {
       {error && <p className="mt-sm text-body-md text-signature-coral">{error}</p>}
 
       <div className="mt-lg space-y-lg">
+        <div>
+          <label className="text-label-md text-ink" htmlFor="displayName">
+            Name
+          </label>
+          <input
+            id="displayName"
+            type="text"
+            value={profile.displayName}
+            onChange={(e) => setProfile({ ...profile, displayName: e.target.value })}
+            placeholder="Full name"
+            maxLength={200}
+            required
+            className="mt-xs block w-full rounded-sm border border-hairline px-md py-xs text-body-md"
+          />
+          <p className="mt-xs text-caption text-muted">
+            Shown to fellow alumni in the directory. You can update this any time — for example
+            after a name change.
+          </p>
+        </div>
+
         <div>
           <label className="text-label-md text-ink" htmlFor="batch">
             Batch
@@ -273,41 +336,34 @@ export function ProfilePage() {
           </div>
         </div>
 
-        <div className="grid gap-sm md:grid-cols-2">
-          <div>
-            <label className="text-label-md text-ink" htmlFor="linkedin">
-              LinkedIn
-            </label>
-            <input
-              id="linkedin"
-              type="url"
-              value={profile.links.linkedin}
-              onChange={(e) =>
-                setProfile({ ...profile, links: { ...profile.links, linkedin: e.target.value } })
-              }
-              placeholder="https://linkedin.com/in/…"
-              className="mt-xs block w-full rounded-sm border border-hairline px-md py-xs text-body-md"
-            />
-          </div>
-          <div>
-            <label className="text-label-md text-ink" htmlFor="website">
-              Website
-            </label>
-            <input
-              id="website"
-              type="url"
-              value={profile.links.website}
-              onChange={(e) =>
-                setProfile({ ...profile, links: { ...profile.links, website: e.target.value } })
-              }
-              placeholder="https://…"
-              className="mt-xs block w-full rounded-sm border border-hairline px-md py-xs text-body-md"
-            />
-          </div>
+        <div>
+          <label className="text-label-md text-ink" htmlFor="website">
+            Website
+          </label>
+          <input
+            id="website"
+            type="url"
+            value={profile.links.website}
+            onChange={(e) =>
+              setProfile({ ...profile, links: { ...profile.links, website: e.target.value } })
+            }
+            placeholder="https://…"
+            className="mt-xs block w-full max-w-[420px] rounded-sm border border-hairline px-md py-xs text-body-md"
+          />
+          <p className="mt-xs text-caption text-muted">
+            Always shown publicly — for LinkedIn, phone, WhatsApp and email, see "Contact &
+            privacy" below, where you choose exactly what's visible.
+          </p>
         </div>
 
+        <ContactPrivacyEditor contact={contact} onChange={setContact} />
+
         <div className="flex gap-md">
-          <Button variant="primary" onClick={() => void handleSave()} disabled={saving}>
+          <Button
+            variant="primary"
+            onClick={() => void handleSave()}
+            disabled={saving || profile.displayName.trim() === ''}
+          >
             {saving ? 'Saving…' : 'Save profile'}
           </Button>
           {profile.isComplete && (

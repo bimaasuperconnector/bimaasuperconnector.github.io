@@ -5,6 +5,8 @@ import {
   collection,
   doc,
   getDoc,
+  getDocs,
+  limit as fsLimit,
   onSnapshot,
   query,
   serverTimestamp,
@@ -53,6 +55,28 @@ function fromSnapshot(uid: string, data: DocumentData): UserRecord {
     role: (data.role as UserRole) ?? 'alumni',
     assignedBatchNumbers: Array.isArray(data.assignedBatchNumbers) ? data.assignedBatchNumbers : [],
   };
+}
+
+/**
+ * super_admin-only lookup used by the role-management control on the
+ * admin dashboard (Phase 11): finds the one user with this email so an
+ * admin can promote/demote by typing an email address rather than
+ * needing a full member-browsing UI. A single `limit(1)` equality
+ * query — one read, not a collection scan — kept deliberately narrow
+ * rather than building a general "browse all 5,000 users" admin view,
+ * which would be both a real quota cost and isn't needed for this.
+ *
+ * Note: this relies on `email` being an exact, lowercase match. Google
+ * Sign-In emails are already lowercase in practice, but if that ever
+ * proves untrue for some account, the lookup will simply report "not
+ * found" rather than something misleading.
+ */
+export async function findUserByEmail(email: string): Promise<UserRecord | null> {
+  const snapshot = await getDocs(
+    query(usersCollection(), where('email', '==', email.trim().toLowerCase()), fsLimit(1)),
+  );
+  const first = snapshot.docs[0];
+  return first ? fromSnapshot(first.id, first.data()) : null;
 }
 
 export async function getUserRecord(uid: string): Promise<UserRecord | null> {

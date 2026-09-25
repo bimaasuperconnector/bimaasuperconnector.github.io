@@ -1,5 +1,6 @@
 import type { Profile } from '../../firebase/repositories/profilesRepository';
 import { findBatch } from '../../lib/batches';
+import { ContactButtons } from './ContactButtons';
 
 export function DirectoryProfileCard({ profile }: { profile: Profile }) {
   const batch = profile.batchNumber !== null ? findBatch(profile.batchNumber) : undefined;
@@ -56,6 +57,8 @@ export function DirectoryProfileCard({ profile }: { profile: Profile }) {
       {profile.openToWork && profile.openToWorkNote && (
         <p className="mt-xs text-body-md text-muted">{profile.openToWorkNote}</p>
       )}
+
+      <ContactButtons contact={profile.contactVisible} />
     </div>
   );
 }

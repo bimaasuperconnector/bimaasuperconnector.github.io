@@ -53,8 +53,35 @@ service cloud.firestore {
       return n == null || isValidBatchNumber(n);
     }
 
+    // Phase 2/11 revision (2026-09-13): `contactVisible` is a
+    // denormalized, PUBLIC-SAFE subset of profileContacts/{uid} —
+    // it contains a key ONLY for a channel the owner has chosen to
+    // reveal, and the owner writes it themselves (this is their own
+    // choice about their own data, not a security boundary the way
+    // approval status is). Never put DOB here — DOB lives ONLY in
+    // profileContacts/{uid}, which is owner-only-readable, full stop.
+    function isValidContactVisibleMap(m) {
+      return m is map
+        && m.keys().hasOnly(['phone', 'whatsapp', 'email', 'linkedin'])
+        && (!('phone' in m) || (m.phone is string && m.phone.size() <= 60))
+        && (!('whatsapp' in m) || (m.whatsapp is string && m.whatsapp.size() <= 60))
+        && (!('email' in m) || (m.email is string && m.email.size() <= 200))
+        && (!('linkedin' in m) || (m.linkedin is string && m.linkedin.size() <= 300));
+    }
+
     function isValidProfileShape(data) {
-      return data.displayName is string && data.displayName.size() <= 200
+      // Phase 2/11 revision: `displayName` is now directly owner-edited
+      // in the Profile form (a real "Name" field, seeded once from the
+      // onboarding name but freely editable afterward — e.g. a surname
+      // change after marriage). It is no longer silently overwritten
+      // from the Google account's live displayName at every save. The
+      // non-empty check is new for the same reason `users.create`
+      // already requires a non-empty name at onboarding: a blank name
+      // is exactly the "Unnamed alum" bug reported against the
+      // directory/Open-to-Work pages, so the shape now refuses to save
+      // a blank one rather than allowing it and letting the UI fall
+      // back to a placeholder string.
+      return data.displayName is string && data.displayName.size() > 0 && data.displayName.size() <= 200
         && data.displayNameLower is string && data.displayNameLower == data.displayName.lower()
         && (data.photoURL == null || data.photoURL is string)
         && data.headline is string && data.headline.size() <= 120
@@ -79,6 +106,7 @@ service cloud.firestore {
         && data.hasFounderOrg is bool
         && data.currentOrganizationName is string && data.currentOrganizationName.size() <= 200
         && data.currentTitle is string && data.currentTitle.size() <= 200
+        && isValidContactVisibleMap(data.contactVisible)
         // Denormalized from the caller's OWN approval status at save
         // time. Always required true here (create/update both require
         // callerIsApproved() independently), which makes directory
@@ -98,7 +126,8 @@ service cloud.firestore {
               'bio', 'location', 'locationLower', 'organizations', 'education', 'skills',
               'skillsLower', 'interests', 'interestsLower', 'networkingPurpose', 'links',
               'isComplete', 'openToWork', 'openToWorkRoles', 'openToWorkNote', 'hasFounderOrg',
-              'currentOrganizationName', 'currentTitle', 'approved', 'createdAt', 'updatedAt']
+              'currentOrganizationName', 'currentTitle', 'approved', 'contactVisible',
+              'createdAt', 'updatedAt']
            );
     }
 
@@ -198,6 +227,49 @@ service cloud.firestore {
         && request.resource.data.uid == uid
         && isValidProfileShape(request.resource.data);
 
+      allow delete: if false;
+    }
+
+    // Phase 2/11 revision (2026-09-13): private contact channels + DOB.
+    function isValidProfileContactShape(data) {
+      return (data.dob == null || (data.dob is string && data.dob.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')))
+        && data.phoneNumber is string && data.phoneNumber.size() <= 40
+        && data.whatsappNumber is string && data.whatsappNumber.size() <= 40
+        && data.contactEmail is string && data.contactEmail.size() <= 200
+        && data.linkedinUrl is string && data.linkedinUrl.size() <= 300
+        && data.visibility is map
+        && data.visibility.keys().hasOnly(['phone', 'whatsapp', 'email', 'linkedin'])
+        && data.visibility.phone is bool
+        && data.visibility.whatsapp is bool
+        && data.visibility.email is bool
+        && data.visibility.linkedin is bool
+        && data.keys().hasOnly(
+             ['uid', 'dob', 'phoneNumber', 'whatsappNumber', 'contactEmail', 'linkedinUrl',
+              'visibility', 'createdAt', 'updatedAt']
+           );
+    }
+
+    // Raw contact channels (phone/WhatsApp/email/LinkedIn) AND date of
+    // birth. Owner-only, with NO admin read path at all — deliberately
+    // stricter than every other collection in this file. Per the
+    // explicit product requirement: date of birth "will be used only
+    // to send Happy Birthday greetings" (a future automation job, via
+    // the Admin SDK, which bypasses these Rules entirely — nothing here
+    // needs to grant it client-level read access) and "is only visible
+    // to the user, no one else." The PUBLIC-safe subset a member
+    // chooses to reveal is denormalized onto profiles/{uid}.contactVisible
+    // instead (see isValidContactVisibleMap above) so Directory/Open to
+    // Work reads never need a second document per profile shown — this
+    // document is read only by its own owner, on their own Profile page.
+    match /profileContacts/{uid} {
+      allow get: if isSelf(uid);
+      allow list: if false;
+      allow create: if isSelf(uid) && callerIsApproved()
+        && request.resource.data.uid == uid
+        && isValidProfileContactShape(request.resource.data);
+      allow update: if isSelf(uid) && callerIsApproved()
+        && request.resource.data.uid == uid
+        && isValidProfileContactShape(request.resource.data);
       allow delete: if false;
     }
 
@@ -453,6 +525,47 @@ service cloud.firestore {
       // A poster can withdraw their own listing at any time; an admin
       // can remove any listing (e.g. a policy violation).
       allow delete: if (isSignedIn() && resource.data.postedByUid == request.auth.uid) || callerIsAnyAdmin();
+    }
+
+    // Phase 11 (Admin, moderators & analytics) — reporting/moderation,
+    // per FEATURE_SUPERCONNECTOR.md's Phase 11 scope note added
+    // 2026-09-08 ("ability for any member to report posts/events/etc.,
+    // with super_admin tooling to review and act on reports"). Jobs
+    // (Phase 9) is the only reportable content that exists so far;
+    // 'job' is the only valid targetType until Events (Phase 13) ships.
+    function isValidReportShape(data) {
+      return data.reporterUid is string
+        && data.targetType in ['job']
+        && data.targetId is string && data.targetId.size() > 0
+        && data.reason in ['spam', 'inappropriate', 'scam', 'other']
+        && data.note is string && data.note.size() <= 500
+        && data.status in ['open', 'resolved', 'dismissed']
+        && data.keys().hasOnly(
+             ['reporterUid', 'targetType', 'targetId', 'reason', 'note', 'status', 'createdAt', 'updatedAt']
+           );
+    }
+
+    match /reports/{reportId} {
+      // A reporter can read their own report (to see it was received);
+      // never someone else's — only an admin sees the full queue.
+      allow get: if callerIsAnyAdmin()
+        || (isSignedIn() && resource.data.reporterUid == request.auth.uid);
+      allow list: if callerIsAnyAdmin()
+        || (callerIsApproved() && resource.data.reporterUid == request.auth.uid);
+
+      allow create: if callerIsApproved()
+        && request.resource.data.reporterUid == request.auth.uid
+        && request.resource.data.status == 'open'
+        && isValidReportShape(request.resource.data);
+
+      // Admin resolves/dismisses — status/updatedAt only, can never
+      // rewrite the report's substance (reporter, target, reason, note)
+      // while moderating it.
+      allow update: if callerIsAnyAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt'])
+        && request.resource.data.status in ['open', 'resolved', 'dismissed'];
+
+      allow delete: if false;
     }
 
     // Everything else stays deny-by-default until a later phase defines

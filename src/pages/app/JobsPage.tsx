@@ -16,6 +16,14 @@ import {
   queryMyJobs,
   withdrawJob,
 } from '../../firebase/repositories/jobsRepository';
+import { type ReportReason, REPORT_REASONS, reportJob } from '../../firebase/repositories/reportsRepository';
+
+const REPORT_REASON_LABELS: Record<ReportReason, string> = {
+  spam: 'Spam',
+  inappropriate: 'Inappropriate',
+  scam: 'Scam',
+  other: 'Other',
+};
 
 const EMPTY_FORM: JobFormFields = {
   company: '',
@@ -32,7 +40,78 @@ const EMPTY_FORM: JobFormFields = {
   expirationDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // default: 30 days out
 };
 
-function JobCard({ job, onWithdraw }: { job: Job; onWithdraw?: () => void }) {
+function ReportJobControl({ jobId, reporterUid }: { jobId: string; reporterUid: string }) {
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState<ReportReason>('spam');
+  const [note, setNote] = useState('');
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+
+  if (sent) {
+    return <p className="mt-sm text-caption text-muted">Reported — thanks for flagging this.</p>;
+  }
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="mt-sm text-caption text-muted hover:underline"
+      >
+        Report this posting
+      </button>
+    );
+  }
+
+  async function submit() {
+    setSending(true);
+    try {
+      await reportJob(reporterUid, jobId, reason, note);
+      setSent(true);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div className="mt-sm rounded-sm bg-surface-soft p-sm">
+      <div className="flex gap-sm">
+        {REPORT_REASONS.map((r) => (
+          <label key={r} className="flex items-center gap-xxs text-caption text-body">
+            <input type="radio" name={`reason-${jobId}`} checked={reason === r} onChange={() => setReason(r)} />
+            {REPORT_REASON_LABELS[r]}
+          </label>
+        ))}
+      </div>
+      <textarea
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        placeholder="Optional note for the admin"
+        maxLength={500}
+        rows={2}
+        className="mt-xs block w-full rounded-sm border border-hairline px-sm py-xxs text-caption"
+      />
+      <div className="mt-xs flex gap-sm">
+        <Button variant="secondary" className="px-sm py-xxs text-caption" onClick={() => setOpen(false)}>
+          Cancel
+        </Button>
+        <Button variant="primary" className="px-sm py-xxs text-caption" disabled={sending} onClick={() => void submit()}>
+          {sending ? 'Sending…' : 'Submit report'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function JobCard({
+  job,
+  onWithdraw,
+  reporterUid,
+}: {
+  job: Job;
+  onWithdraw?: () => void;
+  reporterUid?: string;
+}) {
   return (
     <div className="rounded-md border border-hairline p-md">
       <div className="flex items-start justify-between gap-md">
@@ -73,6 +152,7 @@ function JobCard({ job, onWithdraw }: { job: Job; onWithdraw?: () => void }) {
           Withdraw
         </button>
       )}
+      {reporterUid && <ReportJobControl jobId={job.id} reporterUid={reporterUid} />}
     </div>
   );
 }
@@ -93,17 +173,29 @@ export function JobsPage() {
   async function loadAll() {
     if (!user) return;
     setLoading(true);
-    try {
-      const [mine, page] = await Promise.all([queryMyJobs(user.uid), queryActiveJobs()]);
-      setMyJobs(mine);
-      setActiveJobs(page.jobs);
-      setCursor(page.lastDoc);
-      setHasMore(page.hasMore);
-    } catch {
-      setError("Couldn't load jobs. Please refresh.");
-    } finally {
-      setLoading(false);
+    setError(null);
+    // Split into two independent calls rather than one Promise.all: if
+    // the active-jobs board query fails (e.g. a missing Firestore index
+    // — see the chat setup notes), "Your postings" should still load
+    // instead of the whole page going blank behind one generic error.
+    const results = await Promise.allSettled([queryMyJobs(user.uid), queryActiveJobs()]);
+    if (results[0].status === 'fulfilled') {
+      setMyJobs(results[0].value);
     }
+    if (results[1].status === 'fulfilled') {
+      setActiveJobs(results[1].value.jobs);
+      setCursor(results[1].value.lastDoc);
+      setHasMore(results[1].value.hasMore);
+    }
+    const failure = results.find((r) => r.status === 'rejected') as PromiseRejectedResult | undefined;
+    if (failure) {
+      // Surfaced verbatim (not just a generic string) specifically
+      // because "missing index" errors are a real, common Firestore
+      // setup gap and this message is what tells the owner what to fix.
+      const detail = failure.reason instanceof Error ? failure.reason.message : String(failure.reason);
+      setError(`Couldn't load all jobs data. ${detail}`);
+    }
+    setLoading(false);
   }
 
   useEffect(() => {
@@ -304,7 +396,7 @@ export function JobsPage() {
         ) : (
           <div className="mt-md space-y-md">
             {activeJobs.map((job) => (
-              <JobCard key={job.id} job={job} />
+              <JobCard key={job.id} job={job} reporterUid={user?.uid} />
             ))}
           </div>
         )}
