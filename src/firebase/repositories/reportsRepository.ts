@@ -16,7 +16,11 @@ import { db } from '../init';
 
 export const REPORT_REASONS = ['spam', 'inappropriate', 'scam', 'other'] as const;
 export type ReportReason = (typeof REPORT_REASONS)[number];
-export type ReportTargetType = 'job';
+// 'event' added in Phase 13 — Phase 11's completion log explicitly
+// deferred this ("reports against Events (blocked on Phase 13)"); it
+// isn't blocked anymore. Purely additive: existing 'job' reports and
+// reportJob() below are untouched.
+export type ReportTargetType = 'job' | 'event';
 export type ReportStatus = 'open' | 'resolved' | 'dismissed';
 
 export interface Report {
@@ -60,6 +64,24 @@ export async function reportJob(
     reporterUid,
     targetType: 'job',
     targetId: jobId,
+    reason,
+    note: note.slice(0, 500),
+    status: 'open',
+    createdAt: serverTimestamp(),
+  });
+}
+
+/** Any approved member reporting an event (Phase 13). Same shape/pattern as reportJob() above, kept as a separate function rather than a generalized one so Phase 9's already-shipped reportJob() call sites are untouched. */
+export async function reportEvent(
+  reporterUid: string,
+  eventId: string,
+  reason: ReportReason,
+  note: string,
+): Promise<void> {
+  await addDoc(reportsCollection(), {
+    reporterUid,
+    targetType: 'event',
+    targetId: eventId,
     reason,
     note: note.slice(0, 500),
     status: 'open',

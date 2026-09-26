@@ -535,7 +535,10 @@ service cloud.firestore {
     // 'job' is the only valid targetType until Events (Phase 13) ships.
     function isValidReportShape(data) {
       return data.reporterUid is string
-        && data.targetType in ['job']
+        // 'event' added in Phase 13 — Phase 11's completion log
+        // explicitly deferred this ("reports against Events (blocked
+        // on Phase 13)"); it isn't blocked anymore.
+        && data.targetType in ['job', 'event']
         && data.targetId is string && data.targetId.size() > 0
         && data.reason in ['spam', 'inappropriate', 'scam', 'other']
         && data.note is string && data.note.size() <= 500
@@ -566,6 +569,226 @@ service cloud.firestore {
         && request.resource.data.status in ['open', 'resolved', 'dismissed'];
 
       allow delete: if false;
+    }
+
+    // Phase 13 (Events & meetups).
+    //
+    // An event is visible to exactly the people its targeting says it
+    // should be: everyone, a set of batches, a city, or a hand-picked
+    // list of uids — plus always its own organizer and any admin.
+    // `canSeeEvent()` below independently RECOMPUTES the caller's own
+    // batch number / city from their own profile document via get() —
+    // it never trusts a value the client claims in the query itself.
+    //
+    // Safety re: the "queries are all or nothing" trap documented at
+    // the top of this file (see the 2026-09-08 bugfix notes in
+    // FEATURE_SUPERCONNECTOR.md): every get() this function performs
+    // is a lookup of the CALLER's OWN profile — the exact same document
+    // for every potential result document in a given query execution,
+    // never a lookup that varies per result. That's the same reasoning
+    // already relied on throughout this file for callerIsApproved(),
+    // callerIsAnyAdmin(), and callerRecord() inside other `list` rules
+    // (e.g. profiles.list, jobs.list) — a CONSTANT per-request read,
+    // not the PER-RESULT variability that actually caused Bug 1.
+    function callerHasProfile() {
+      return isSignedIn() && exists(/databases/$(database)/documents/profiles/$(request.auth.uid));
+    }
+
+    function callerBatchNumber() {
+      return callerHasProfile()
+        ? get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.batchNumber
+        : null;
+    }
+
+    function callerCityLower() {
+      return callerHasProfile()
+        ? get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.locationLower
+        : '';
+    }
+
+    function canSeeEvent(data) {
+      return data.targetType == 'everyone'
+        || (data.targetType == 'batch' && callerBatchNumber() != null && callerBatchNumber() in data.targetBatchNumbers)
+        || (data.targetType == 'city' && callerCityLower() != '' && callerCityLower() == data.targetCityLower)
+        || (data.targetType == 'selected' && request.auth.uid in data.targetUids)
+        || data.organizerUid == request.auth.uid;
+    }
+
+    // Keep targetBatchNumbers' cap in sync with CURRENT_MAX_BATCH_NUMBER
+    // (see isValidBatchNumber above) and targetUids' cap with
+    // MAX_TARGET_UIDS in src/lib/events.ts.
+    function isValidEventTargeting(data) {
+      return data.targetType in ['everyone', 'batch', 'city', 'selected']
+        && data.targetBatchNumbers is list && data.targetBatchNumbers.size() <= 43
+        && data.targetCityLower is string && data.targetCityLower.size() <= 120
+        && data.targetUids is list && data.targetUids.size() <= 50
+        && (data.targetType == 'batch' ? data.targetBatchNumbers.size() > 0 : data.targetBatchNumbers.size() == 0)
+        && (data.targetType == 'city' ? data.targetCityLower.size() > 0 : data.targetCityLower == '')
+        && (data.targetType == 'selected' ? data.targetUids.size() > 0 : data.targetUids.size() == 0);
+    }
+
+    // Core editable fields only — organizer identity, targeting, and
+    // every automation-only field (calendarEventId, meetLink,
+    // syncedAttendeeUids — written solely by the Admin SDK, see
+    // automation/src/eventsCalendarJob.ts) are deliberately validated
+    // NOWHERE in this function. The update rule below restricts an
+    // organizer's write to ONLY the keys checked here via
+    // diff().affectedKeys().hasOnly(...), so those other fields are
+    // structurally guaranteed unchanged rather than needing to be
+    // re-validated on every edit (which would otherwise require this
+    // function to know about fields only automation ever sets).
+    function isValidEventCoreFields(data) {
+      return data.title is string && data.title.size() > 0 && data.title.size() <= 200
+        && data.description is string && data.description.size() <= 3000
+        && data.format in ['virtual', 'physical']
+        && data.location is string && data.location.size() <= 200
+        && (data.format == 'physical' ? data.location.size() > 0 : true)
+        && data.virtualNote is string && data.virtualNote.size() <= 300
+        && data.startTime is timestamp
+        && data.endTime is timestamp
+        && data.endTime > data.startTime
+        && (data.rsvpDeadline == null || (data.rsvpDeadline is timestamp && data.rsvpDeadline <= data.startTime))
+        && (data.capacity == null || (data.capacity is int && data.capacity >= 1 && data.capacity <= 1000))
+        && data.status in ['scheduled', 'cancelled'];
+    }
+
+    // Full shape, create-time only. Deliberately excludes calendarEventId
+    // / calendarEventHtmlLink / meetLink / syncedAttendeeUids from
+    // hasOnly() below — a client-created event must never arrive with
+    // those already set; only the Admin SDK (bypassing these Rules
+    // entirely) ever writes them, after creation.
+    function isValidEventShape(data) {
+      return data.organizerUid is string
+        && data.organizerDisplayName is string && data.organizerDisplayName.size() <= 200
+        && isValidEventCoreFields(data)
+        && isValidEventTargeting(data)
+        && data.keys().hasOnly(
+             ['organizerUid', 'organizerDisplayName', 'title', 'description', 'format', 'location',
+              'virtualNote', 'startTime', 'endTime', 'rsvpDeadline', 'capacity', 'targetType',
+              'targetBatchNumbers', 'targetCityLower', 'targetUids', 'status', 'createdAt', 'updatedAt']
+           );
+    }
+
+    match /events/{eventId} {
+      // `resource == null` guard for the same reason as
+      // connectionRegistrations/matchParticipants/feedback above — a
+      // client checking "does event X still exist" before RSVPing must
+      // not error on a not-yet/no-longer-existing document.
+      allow get: if callerIsAnyAdmin() || (callerIsApproved() && (resource == null || canSeeEvent(resource.data)));
+      allow list: if callerIsAnyAdmin() || (callerIsApproved() && canSeeEvent(resource.data));
+
+      allow create: if callerIsApproved()
+        && request.resource.data.organizerUid == request.auth.uid
+        && request.resource.data.status == 'scheduled'
+        && request.resource.data.startTime > request.time
+        && isValidEventShape(request.resource.data);
+
+      // Organizer edit: restricted via diff().affectedKeys().hasOnly()
+      // to exactly the core fields isValidEventCoreFields() checks —
+      // organizerUid/targeting/automation fields are therefore
+      // structurally unchanged by this path, not just "not intended to
+      // change." Admin moderation is a separate, narrower branch
+      // (status/updatedAt only), same split-update-path pattern as
+      // jobs.update.
+      allow update: if (
+        callerIsApproved()
+        && resource.data.organizerUid == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(
+             ['title', 'description', 'format', 'location', 'virtualNote', 'startTime', 'endTime',
+              'rsvpDeadline', 'capacity', 'status', 'updatedAt']
+           )
+        && isValidEventCoreFields(request.resource.data)
+      ) || (
+        callerIsAnyAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt'])
+        && request.resource.data.status in ['scheduled', 'cancelled']
+      );
+
+      // Organizer or admin, unconditionally — same posture as
+      // jobs.delete. The UI steers organizers toward cancelEvent()
+      // instead once RSVPs exist (see eventsRepository.ts), but this
+      // isn't enforced here: Rules can't cheaply check "are there zero
+      // RSVPs" without a count() query, and count() aggregates can't be
+      // used as a Rules condition at all.
+      allow delete: if (isSignedIn() && resource.data.organizerUid == request.auth.uid) || callerIsAnyAdmin();
+    }
+
+    function isValidEventRsvpShape(data) {
+      return data.eventId is string && data.eventId.size() > 0
+        && data.uid is string
+        && data.organizerUid is string
+        && data.status in ['attending', 'waitlisted', 'cancelled']
+        && data.keys().hasOnly(['eventId', 'uid', 'organizerUid', 'status', 'respondedAt', 'updatedAt']);
+    }
+
+    function eventOrganizerUid(eventId) {
+      return get(/databases/$(database)/documents/events/$(eventId)).data.organizerUid;
+    }
+
+    function eventStatus(eventId) {
+      return get(/databases/$(database)/documents/events/$(eventId)).data.status;
+    }
+
+    function eventRsvpDeadlineOk(eventId) {
+      return get(/databases/$(database)/documents/events/$(eventId)).data.rsvpDeadline == null
+        || request.time < get(/databases/$(database)/documents/events/$(eventId)).data.rsvpDeadline;
+    }
+
+    match /eventRsvps/{rsvpId} {
+      allow get: if isSignedIn()
+        && (resource == null
+            || resource.data.uid == request.auth.uid
+            || resource.data.organizerUid == request.auth.uid
+            || callerIsAnyAdmin());
+
+      // Three independent, structurally-safe branches — none needs a
+      // per-result cross-collection check that could vary across a
+      // single query's potential results:
+      // 1. A member listing their OWN RSVPs (`where('uid','==',uid)`) —
+      //    same-document field, exactly the matchParticipants.list
+      //    pattern from Phase 6.
+      // 2. An organizer listing attendees for ONE event
+      //    (`where('eventId','==',X).where('organizerUid','==',uid)`)
+      //    — also same-document (organizerUid is denormalized onto
+      //    every RSVP at creation — see eventRsvpsRepository.ts),
+      //    independently re-verified against the real event document
+      //    at CREATE time below, so a client cannot forge it.
+      // 3. Anyone who can see event X checking how many people are
+      //    `attending` (the capacity/"spots left" count() query) —
+      //    `resource.data.eventId` is fixed to whatever single eventId
+      //    the query itself filtered on, so the get() below looks up
+      //    the SAME event document for every potential result in that
+      //    one query execution, not a value that varies per result.
+      allow list: if callerIsAnyAdmin()
+        || (isSignedIn() && resource.data.uid == request.auth.uid)
+        || (isSignedIn() && resource.data.organizerUid == request.auth.uid)
+        || (callerIsApproved() && canSeeEvent(get(/databases/$(database)/documents/events/$(resource.data.eventId)).data));
+
+      allow create: if callerIsApproved()
+        && request.resource.data.uid == request.auth.uid
+        && rsvpId == (request.resource.data.eventId + '_' + request.auth.uid)
+        && exists(/databases/$(database)/documents/events/$(request.resource.data.eventId))
+        && eventStatus(request.resource.data.eventId) == 'scheduled'
+        && request.resource.data.organizerUid == eventOrganizerUid(request.resource.data.eventId)
+        && eventRsvpDeadlineOk(request.resource.data.eventId)
+        && request.resource.data.status in ['attending', 'waitlisted']
+        && isValidEventRsvpShape(request.resource.data);
+
+      // A member can always cancel their own RSVP. Re-activating
+      // (attending/waitlisted, e.g. changing their mind back) is only
+      // allowed while the event is still scheduled and before its RSVP
+      // deadline — same spirit as connectionRegistrations, but RSVP
+      // withdrawal itself is handled by `delete` below, not this path.
+      allow update: if callerIsApproved()
+        && resource.data.uid == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt'])
+        && request.resource.data.status in ['attending', 'waitlisted', 'cancelled']
+        && (request.resource.data.status == 'cancelled'
+            || (eventStatus(resource.data.eventId) == 'scheduled' && eventRsvpDeadlineOk(resource.data.eventId)));
+
+      // Withdrawal is always allowed regardless of event status — same
+      // posture as connectionRegistrations.delete.
+      allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
     }
 
     // Everything else stays deny-by-default until a later phase defines

@@ -7,6 +7,8 @@ export interface Notification {
   title: string;
   body: string;
   cycleId: string | null;
+  /** Present on Phase 13 event-related notifications instead of cycleId — see automation/src/notifications.ts' createEventNotification(). */
+  eventId: string | null;
   read: boolean;
   createdAt: Date | null;
 }
@@ -32,6 +34,7 @@ export async function listOwnNotifications(uid: string): Promise<Notification[]>
       title: data.title ?? '',
       body: data.body ?? '',
       cycleId: data.cycleId ?? null,
+      eventId: data.eventId ?? null,
       read: data.read === true,
       createdAt: data.createdAt?.toDate?.() ?? null,
     };

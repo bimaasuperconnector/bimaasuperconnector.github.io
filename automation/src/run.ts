@@ -5,6 +5,7 @@ import { runMatchingJob } from './matchingJob';
 import { runCalendarJob } from './calendarJob';
 import { runFeedbackScoreJob } from './feedbackScoreJob';
 import { runJobsCleanupJob } from './jobsCleanupJob';
+import { runEventsCalendarJob } from './eventsCalendarJob';
 import { logJobRun } from './auditLog';
 
 /**
@@ -17,9 +18,9 @@ import { logJobRun } from './auditLog';
  * Order: cycle-state first (so a freshly-due transition is visible to
  * the jobs below in the same run), then matching (acts on cycles that
  * just closed), then calendar (needs matches to exist first), then
- * feedback/score, then jobs-cleanup last (independent of cycles
- * entirely, so its position doesn't matter much — kept at the end for
- * readability).
+ * feedback/score, then events-calendar (Phase 13 — independent of
+ * cycles entirely, so its position relative to the cycle jobs doesn't
+ * matter; kept after them for readability), then jobs-cleanup last.
  */
 async function main() {
   const runId = randomUUID();
@@ -34,6 +35,7 @@ async function main() {
     await runMatchingJob();
     await runCalendarJob();
     await runFeedbackScoreJob();
+    await runEventsCalendarJob();
     await runJobsCleanupJob();
     console.log('Automation run completed successfully.');
   } catch (err) {
