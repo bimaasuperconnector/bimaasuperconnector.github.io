@@ -41,21 +41,37 @@ export function PendingFeedback() {
     async function load() {
       try {
         const matchRecords = await listOwnMatchParticipants(user!.uid);
-        const items: PendingItem[] = [];
 
-        for (const record of matchRecords) {
-          for (const aboutUid of record.otherParticipantUids) {
-            const alreadyGiven = await feedbackExists(record.matchId, user!.uid, aboutUid);
-            if (alreadyGiven) continue;
-            const aboutProfile = await getProfile(aboutUid);
-            items.push({
-              matchId: record.matchId,
-              cycleId: record.cycleId,
-              aboutUid,
-              aboutDisplayName: aboutProfile?.displayName || 'this alum',
-            });
-          }
-        }
+        // Quota/latency pass: flatten to one (match, aboutUid) combo per
+        // possible prompt, then run every "already given feedback?"
+        // check IN PARALLEL instead of one sequential await per combo
+        // inside a nested loop. Same number of reads as before — this
+        // only removes the artificial serialization, which was the
+        // known limitation flagged in the Phase 6 completion log.
+        const combos = matchRecords.flatMap((record) =>
+          record.otherParticipantUids.map((aboutUid) => ({ record, aboutUid })),
+        );
+        const alreadyGivenFlags = await Promise.all(
+          combos.map(({ record, aboutUid }) => feedbackExists(record.matchId, user!.uid, aboutUid)),
+        );
+        const stillPending = combos.filter((_, i) => !alreadyGivenFlags[i]);
+
+        // The same alum can appear in more than one pending combo (e.g.
+        // matched again in a later cycle before feedback closes) — fetch
+        // each UNIQUE profile only once rather than once per combo, in
+        // parallel, then look it up from the resolved map. This reduces
+        // reads whenever that overlap happens and never increases them
+        // otherwise.
+        const uniqueAboutUids = [...new Set(stillPending.map((c) => c.aboutUid))];
+        const profiles = await Promise.all(uniqueAboutUids.map((uid) => getProfile(uid)));
+        const profileByUid = new Map(uniqueAboutUids.map((uid, i) => [uid, profiles[i]]));
+
+        const items: PendingItem[] = stillPending.map(({ record, aboutUid }) => ({
+          matchId: record.matchId,
+          cycleId: record.cycleId,
+          aboutUid,
+          aboutDisplayName: profileByUid.get(aboutUid)?.displayName || 'this alum',
+        }));
 
         if (!cancelled) setPending(items);
       } catch {
