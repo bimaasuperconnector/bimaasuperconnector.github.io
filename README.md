@@ -4,7 +4,9 @@
 
 SuperConnector is currently under active development and is expected to reach the **Proof of Concept (PoC) stage by End of November 2026**.
 
-The project is being developed by a **BIM alumnus**, with the goal of creating a useful platform for connecting and engaging the BIM alumni community.
+The project is being developed by a **BIM alumnus**, with the goal of creating a useful platform for connecting and engaging the BIM alumni community - which is cost effective to maintain for the long run. 
+
+Currently, the demo site can be accessed at: https://bimaasuperconnector.github.io/
 
 If you have suggestions, ideas, or would like to get in touch:
 
