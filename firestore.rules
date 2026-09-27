@@ -458,8 +458,19 @@ service cloud.firestore {
     // Includes the automation run-lock document (systemConfig/automationLock)
     // and any future global config. Admin-only visibility; only
     // automation (Admin SDK) writes it.
+    //
+    // Phase 15 exception: `publicStats` is the ONE deliberately public
+    // document in this collection — a small, automation-written
+    // aggregate-counts doc (see automation/src/publicStatsJob.ts) that
+    // the signed-out public landing page reads, per ARCHITECTURE.md's
+    // "Public landing page exposes only safe aggregate statistics."
+    // This is a same-document, per-document-ID check (`configId ==
+    // 'publicStats'`), not a change to `list` (still admin-only) and
+    // not a blanket opening of the collection — every other
+    // systemConfig document, including the automation lock, stays
+    // exactly as admin-only as before.
     match /systemConfig/{configId} {
-      allow get: if callerIsAnyAdmin();
+      allow get: if configId == 'publicStats' || callerIsAnyAdmin();
       allow list: if callerIsAnyAdmin();
       allow create, update, delete: if false;
     }

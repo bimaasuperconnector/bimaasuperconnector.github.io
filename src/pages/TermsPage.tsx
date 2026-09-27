@@ -74,7 +74,7 @@ export function TermsPage() {
           </section>
           <section>
             <h2 className="text-title-md text-ink">15. Contact</h2>
-            <p>Questions about these Terms: {PLACEHOLDER}.</p>
+            <p>Questions about these Terms: bimaasuperconnector@gmail.com.</p>
           </section>
         </div>
       </Container>

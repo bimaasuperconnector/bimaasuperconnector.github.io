@@ -64,6 +64,19 @@ export default defineConfig({
         // Precache the app shell only; do not add extra runtime caching
         // rules for API calls (Firestore/Auth are never intercepted).
         globPatterns: ['**/*.{js,css,html,svg,png,ico,webmanifest}'],
+        // Phase 15 PWA polish: without this, a direct/refreshed load of
+        // a deep route (e.g. /app/directory) while OFFLINE hits a
+        // browser network-error page, because that path was never
+        // precached under its own name — only index.html was. This
+        // makes any navigation request Workbox can't otherwise satisfy
+        // fall back to the precached index.html shell, so client-side
+        // routing + auth state take over as soon as they can. It only
+        // matches full-page navigation requests (GET, mode:'navigate')
+        // — it has no effect on the Firestore/Auth fetch/XHR calls
+        // SECURITY_AND_TESTING.md's PWA section is about; those were
+        // never intercepted before this change and still aren't.
+        navigateFallback: '/index.html',
+        navigateFallbackDenylist: [/^\/assets\//],
       },
     }),
   ],

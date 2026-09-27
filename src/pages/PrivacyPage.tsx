@@ -23,8 +23,17 @@ export function PrivacyPage() {
               Your Google identity (name, email, profile photo), the
               profile details you add (batch, education, organizations,
               location, skills, networking interests), your monthly
-              participation and feedback, and technical/security data needed
-              to keep the service safe.
+              participation and feedback, job posts and event listings
+              you create, and technical/security data needed to keep
+              the service safe.
+            </p>
+            <p className="mt-sm">
+              Separately, and only if you choose to add them: your date
+              of birth, phone number, WhatsApp number, a personal
+              contact email, and a LinkedIn profile link. These are
+              stored apart from your directory profile specifically so
+              they can stay private by default — see "Who can see it"
+              below for exactly who can see each one.
             </p>
           </section>
           <section>
@@ -42,6 +51,14 @@ export function PrivacyPage() {
               to share. Your email is private by default. Admins/moderators
               can see additional fields needed for moderation.
             </p>
+            <p className="mt-sm">
+              Your date of birth is visible only to you — not to other
+              members, and not to admins. Your phone number, WhatsApp
+              number, personal contact email, and LinkedIn link are
+              private by default; each one is shown to fellow approved
+              members only if you individually switch it on, and stays
+              hidden otherwise.
+            </p>
           </section>
           <section>
             <h2 className="text-title-md text-ink">Processors we rely on</h2>
@@ -57,11 +74,17 @@ export function PrivacyPage() {
           </section>
           <section>
             <h2 className="text-title-md text-ink">Cookies &amp; local storage</h2>
-            <p>We use local/session storage for sign-in state and a service worker for offline app-shell caching. We do not use third-party advertising cookies.</p>
+            <p>
+              We use local/session storage for sign-in state and a service
+              worker for offline app-shell caching. If you enable browser
+              notifications for this app, that permission is stored by your
+              browser, not by us. We do not use third-party advertising
+              cookies.
+            </p>
           </section>
           <section>
             <h2 className="text-title-md text-ink">Your choices</h2>
-            <p>You can correct your profile at any time, or request account deletion by contacting {PLACEHOLDER}.</p>
+            <p>You can correct your profile at any time, or request account deletion by contacting bimaasuperconnector@gmail.com.</p>
           </section>
           <section>
             <h2 className="text-title-md text-ink">Eligibility</h2>
@@ -77,7 +100,7 @@ export function PrivacyPage() {
           </section>
           <section>
             <h2 className="text-title-md text-ink">Contact</h2>
-            <p>Questions about this policy: {PLACEHOLDER}.</p>
+            <p>Questions about this policy: bimaasuperconnector@gmail.com.</p>
           </section>
         </div>
       </Container>

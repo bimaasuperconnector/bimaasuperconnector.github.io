@@ -1,7 +1,21 @@
+import { useEffect, useState } from 'react';
 import { Container } from '../components/ui/Container';
 import { LinkButton } from '../components/ui/Button';
+import { getPublicStats, type PublicStats } from '../firebase/repositories/publicStatsRepository';
 
 export function LandingPage() {
+  const [stats, setStats] = useState<PublicStats | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getPublicStats().then((result) => {
+      if (!cancelled) setStats(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <>
       {/* hero-band: white canvas, no gradient, whitespace as atmosphere */}
@@ -23,6 +37,37 @@ export function LandingPage() {
               How it works
             </LinkButton>
           </div>
+
+          {/* Safe aggregate stats only — ARCHITECTURE.md: "Public
+              landing page exposes only safe aggregate statistics."
+              Sourced from the one public systemConfig/publicStats
+              document (see publicStatsRepository.ts); renders nothing
+              until that document has real data, so a fresh deployment
+              never shows a misleading row of zeros. Kept inside the
+              same white hero band (not its own section) so the page's
+              established white → coral → white → cream → dark → light
+              rhythm isn't disrupted by an extra consecutive white
+              band. */}
+          {stats && (
+            <div className="mt-md flex flex-wrap gap-xl border-t border-hairline pt-lg text-body-md text-body">
+              <div>
+                <p className="text-title-md text-ink">{stats.approvedMembers}+</p>
+                <p>Approved alumni</p>
+              </div>
+              <div>
+                <p className="text-title-md text-ink">{stats.connectionsMade}+</p>
+                <p>Connections made</p>
+              </div>
+              <div>
+                <p className="text-title-md text-ink">{stats.eventsHosted}+</p>
+                <p>Events hosted</p>
+              </div>
+              <div>
+                <p className="text-title-md text-ink">{stats.foundersInNetwork}+</p>
+                <p>Founders in the network</p>
+              </div>
+            </div>
+          )}
         </Container>
       </section>
 

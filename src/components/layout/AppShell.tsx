@@ -3,17 +3,29 @@ import { Link, NavLink, Outlet } from 'react-router-dom';
 import { Container } from '../ui/Container';
 import { useAuth } from '../../context/AuthContext';
 import { useUserRecord } from '../../context/UserRecordContext';
+import {
+  HomeIcon,
+  ProfileIcon,
+  DirectoryIcon,
+  SuperConnectorIcon,
+  JobsIcon,
+  OpenToWorkIcon,
+  EventsIcon,
+  EntrepreneurshipIcon,
+  NotificationsIcon,
+  AdminIcon,
+} from '../icons/NavIcons';
 
 const navItems = [
-  { to: '/app', label: 'Home', end: true },
-  { to: '/app/profile', label: 'Profile' },
-  { to: '/app/directory', label: 'Directory' },
-  { to: '/app/superconnector', label: 'SuperConnector' },
-  { to: '/app/jobs', label: 'Jobs' },
-  { to: '/app/open-to-work', label: 'Open to Work' },
-  { to: '/app/events', label: 'Events' },
-  { to: '/app/entrepreneurship', label: 'Entrepreneurship' },
-  { to: '/app/notifications', label: 'Notifications' },
+  { to: '/app', label: 'Home', end: true, Icon: HomeIcon },
+  { to: '/app/profile', label: 'Profile', Icon: ProfileIcon },
+  { to: '/app/directory', label: 'Directory', Icon: DirectoryIcon },
+  { to: '/app/superconnector', label: 'SuperConnector', Icon: SuperConnectorIcon },
+  { to: '/app/jobs', label: 'Jobs', Icon: JobsIcon },
+  { to: '/app/open-to-work', label: 'Open to Work', Icon: OpenToWorkIcon },
+  { to: '/app/events', label: 'Events', Icon: EventsIcon },
+  { to: '/app/entrepreneurship', label: 'Entrepreneurship', Icon: EntrepreneurshipIcon },
+  { to: '/app/notifications', label: 'Notifications', Icon: NotificationsIcon },
 ];
 
 export function AppShell() {
@@ -22,10 +34,22 @@ export function AppShell() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const isAnyAdmin = record?.role === 'super_admin' || record?.role === 'batch_admin';
-  const items = isAnyAdmin ? [...navItems, { to: '/app/admin', label: 'Admin', end: false }] : navItems;
+  const items = isAnyAdmin
+    ? [...navItems, { to: '/app/admin', label: 'Admin', end: false, Icon: AdminIcon }]
+    : navItems;
 
   return (
     <div className="flex min-h-screen flex-col bg-canvas">
+      {/* Accessibility: a real skip link, per SECURITY_AND_TESTING.md's
+          "screen-reader semantics for important controls" test category
+          — keyboard/screen-reader users can jump straight past the
+          nav instead of tabbing through 9-10 links on every page. */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-lg focus:top-lg focus:z-10 focus:rounded-sm focus:bg-primary focus:px-md focus:py-sm focus:text-on-primary"
+      >
+        Skip to content
+      </a>
       <header className="border-b border-hairline">
         <Container className="flex h-16 items-center justify-between">
           <div className="flex items-center gap-sm">
@@ -81,11 +105,12 @@ export function AppShell() {
                     end={item.end}
                     onClick={() => setMobileMenuOpen(false)}
                     className={({ isActive }) =>
-                      `block rounded-sm px-sm py-sm text-body-md ${
+                      `flex items-center gap-sm rounded-sm px-sm py-sm text-body-md ${
                         isActive ? 'bg-surface-soft text-ink' : 'text-body'
                       }`
                     }
                   >
+                    <item.Icon />
                     {item.label}
                   </NavLink>
                 </li>
@@ -104,11 +129,12 @@ export function AppShell() {
                   to={item.to}
                   end={item.end}
                   className={({ isActive }) =>
-                    `block rounded-sm px-sm py-xs text-body-md ${
+                    `flex items-center gap-sm rounded-sm px-sm py-xs text-body-md transition-colors duration-150 ${
                       isActive ? 'bg-surface-soft text-ink' : 'text-body hover:text-ink'
                     }`
                   }
                 >
+                  <item.Icon />
                   {item.label}
                 </NavLink>
               </li>
@@ -116,7 +142,7 @@ export function AppShell() {
           </ul>
         </nav>
 
-        <main className="flex-1 p-lg md:p-xxl">
+        <main id="main-content" className="flex-1 p-lg md:p-xxl">
           <Outlet />
         </main>
       </div>
