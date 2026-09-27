@@ -75,7 +75,7 @@ export function targetingSummary(t: EventTargeting): string {
  */
 export function canViewEvent(
   event: EventTargeting & { organizerUid: string },
-  viewer: { uid: string; batchNumber: number | null; locationLower: string },
+  viewer: { uid: string; batchNumber: number | null; cityCanonicalLower: string },
 ): boolean {
   if (event.organizerUid === viewer.uid) return true;
   switch (event.targetType) {
@@ -84,7 +84,7 @@ export function canViewEvent(
     case 'batch':
       return viewer.batchNumber != null && event.targetBatchNumbers.includes(viewer.batchNumber);
     case 'city':
-      return viewer.locationLower !== '' && viewer.locationLower === event.targetCityLower;
+      return viewer.cityCanonicalLower !== '' && viewer.cityCanonicalLower === event.targetCityLower;
     case 'selected':
       return event.targetUids.includes(viewer.uid);
   }

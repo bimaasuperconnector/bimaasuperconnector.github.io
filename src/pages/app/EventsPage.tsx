@@ -233,7 +233,7 @@ export function EventsPage() {
         queryVisibleEvents({
           uid: user.uid,
           batchNumber: myProfile?.batchNumber ?? null,
-          locationLower: myProfile?.locationLower ?? '',
+          cityCanonicalLower: myProfile?.cityCanonicalLower ?? '',
         }),
         listOwnRsvps(user.uid),
       ]);

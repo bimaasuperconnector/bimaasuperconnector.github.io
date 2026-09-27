@@ -212,7 +212,16 @@ const VISIBLE_EVENTS_PAGE_SIZE = 50;
 export interface VisibleEventsViewer {
   uid: string;
   batchNumber: number | null;
-  locationLower: string;
+  /**
+   * Phase 14: this is now the viewer's CANONICAL city
+   * (profile.cityCanonicalLower, see src/lib/geography.ts), not the raw
+   * `locationLower` free text — matches how `targetCityLower` is now
+   * saved (TargetingEditor.tsx normalizes it the same way) and how
+   * firestore.rules' canSeeEvent()/callerCityLower() resolve it, so a
+   * "Bangalore"-typed event reaches a "Bengaluru"-typed profile and
+   * vice versa instead of missing on a raw-text mismatch.
+   */
+  cityCanonicalLower: string;
 }
 
 export async function queryVisibleEvents(viewer: VisibleEventsViewer): Promise<AlumniEvent[]> {
@@ -232,12 +241,12 @@ export async function queryVisibleEvents(viewer: VisibleEventsViewer): Promise<A
       ),
     );
   }
-  if (viewer.locationLower) {
+  if (viewer.cityCanonicalLower) {
     queries.push(
       query(
         col,
         where('targetType', '==', 'city'),
-        where('targetCityLower', '==', viewer.locationLower),
+        where('targetCityLower', '==', viewer.cityCanonicalLower),
         orderBy('startTime', 'asc'),
         fsLimit(VISIBLE_EVENTS_PAGE_SIZE),
       ),

@@ -17,6 +17,7 @@ import {
 } from 'firebase/firestore';
 import type { User as FirebaseUser } from 'firebase/auth';
 import { db } from '../init';
+import { normalizeCity, normalizeCityLower } from '../../lib/geography';
 
 export interface OrganizationEntry {
   name: string;
@@ -148,6 +149,18 @@ export interface Profile extends ProfileFormFields {
   displayNameLower: string;
   photoURL: string | null;
   locationLower: string;
+  /**
+   * Phase 14 addition: `location` normalized against a controlled
+   * reference table (src/lib/geography.ts) so "Bangalore" and
+   * "Bengaluru" collapse to one canonical value — used for
+   * communication-segment resolution (city segments) and for matching
+   * Phase 13 event city-targeting against a viewer's profile, without
+   * changing the existing free-text `location`/`locationLower` fields
+   * Directory's location-prefix search already relies on. See
+   * FEATURE_SUPERCONNECTOR.md's Phase 14 entry for the full rationale.
+   */
+  cityCanonical: string;
+  cityCanonicalLower: string;
   skillsLower: string[];
   interestsLower: string[];
   /** true if any organizations[] entry has isFounder: true. Powers the "Entrepreneurs" directory filter without an array-of-maps query. */
@@ -168,6 +181,8 @@ const ALLOWED_TOP_LEVEL_FIELDS = [
   'bio',
   'location',
   'locationLower',
+  'cityCanonical',
+  'cityCanonicalLower',
   'organizations',
   'education',
   'skills',
@@ -210,6 +225,11 @@ function fromSnapshot(uid: string, data: DocumentData): Profile {
     bio: data.bio ?? '',
     location: data.location ?? '',
     locationLower: data.locationLower ?? '',
+    // Falls back to '' for a profile saved before Phase 14 shipped —
+    // same self-healing-on-next-save pattern as every prior schema
+    // addition in this project (Phase 3, 5, 6, 10).
+    cityCanonical: data.cityCanonical ?? '',
+    cityCanonicalLower: data.cityCanonicalLower ?? '',
     organizations: Array.isArray(data.organizations) ? data.organizations : [],
     education: Array.isArray(data.education) ? data.education : [],
     skills: Array.isArray(data.skills) ? data.skills : [],
@@ -256,6 +276,8 @@ export function emptyProfile(uid: string, seedDisplayName = ''): Profile {
     bio: '',
     location: '',
     locationLower: '',
+    cityCanonical: '',
+    cityCanonicalLower: '',
     organizations: [],
     education: [],
     skills: [],
@@ -322,6 +344,12 @@ export async function saveOwnProfile(user: FirebaseUser, fields: ProfileFormFiel
     displayName: name,
     displayNameLower: name.toLowerCase(),
     locationLower: fields.location.toLowerCase(),
+    // Phase 14: denormalized, controlled-reference-data-normalized
+    // twin of `location` — see src/lib/geography.ts. Computed on every
+    // save so it never drifts from the freehand `location` text the
+    // member actually typed.
+    cityCanonical: normalizeCity(fields.location),
+    cityCanonicalLower: normalizeCityLower(fields.location),
     skillsLower: fields.skills.map((s) => s.toLowerCase()),
     interestsLower: fields.interests.map((s) => s.toLowerCase()),
     hasFounderOrg: fields.organizations.some((org) => org.isFounder),

@@ -88,6 +88,13 @@ service cloud.firestore {
         && data.bio is string && data.bio.size() <= 1000
         && data.location is string && data.location.size() <= 120
         && data.locationLower is string && data.locationLower == data.location.lower()
+        // Phase 14: controlled-reference-data-normalized twin of
+        // location (src/lib/geography.ts) — powers communication
+        // segmentation ('city' segments) and Phase 13 event
+        // city-targeting matching. Always computed by saveOwnProfile()
+        // from `location`, never independently client-set.
+        && data.cityCanonical is string && data.cityCanonical.size() <= 120
+        && data.cityCanonicalLower is string && data.cityCanonicalLower == data.cityCanonical.lower()
         && data.organizations is list && data.organizations.size() <= 10
         && data.education is list && data.education.size() <= 10
         && data.skills is list && data.skills.size() <= 20
@@ -123,9 +130,9 @@ service cloud.firestore {
         && isValidBatchNumberOrNull(data.batchNumber)
         && data.keys().hasOnly(
              ['uid', 'displayName', 'displayNameLower', 'photoURL', 'batchNumber', 'headline',
-              'bio', 'location', 'locationLower', 'organizations', 'education', 'skills',
-              'skillsLower', 'interests', 'interestsLower', 'networkingPurpose', 'links',
-              'isComplete', 'openToWork', 'openToWorkRoles', 'openToWorkNote', 'hasFounderOrg',
+              'bio', 'location', 'locationLower', 'cityCanonical', 'cityCanonicalLower', 'organizations',
+              'education', 'skills', 'skillsLower', 'interests', 'interestsLower', 'networkingPurpose',
+              'links', 'isComplete', 'openToWork', 'openToWorkRoles', 'openToWorkNote', 'hasFounderOrg',
               'currentOrganizationName', 'currentTitle', 'approved', 'contactVisible',
               'createdAt', 'updatedAt']
            );
@@ -600,9 +607,22 @@ service cloud.firestore {
         : null;
     }
 
+    // Phase 14: prefers the controlled-reference-data-normalized
+    // cityCanonicalLower (so an event targeted at "Bangalore" reaches a
+    // caller whose profile says "Bengaluru", and vice versa) but falls
+    // back to the raw locationLower for a profile that hasn't been
+    // resaved since Phase 14 shipped and so doesn't have
+    // cityCanonicalLower yet — the same self-healing-on-next-save
+    // tolerance this project applies to every prior schema addition,
+    // done here with an explicit `in` check rather than assuming the
+    // field is always present.
     function callerCityLower() {
       return callerHasProfile()
-        ? get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.locationLower
+        ? (
+            'cityCanonicalLower' in get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data
+              ? get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.cityCanonicalLower
+              : get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.locationLower
+          )
         : '';
     }
 
@@ -789,6 +809,48 @@ service cloud.firestore {
       // Withdrawal is always allowed regardless of event status — same
       // posture as connectionRegistrations.delete.
       allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
+    }
+
+    // Phase 14 (Autonomous communication & segmentation). Segment
+    // DEFINITIONS only — an admin-authored, named "who does this refer
+    // to" record (batch/city/openToWork/founders/a hand-picked uid
+    // list). Deliberately NOT a materialized membership list: resolving
+    // WHO is currently in a segment is done on demand, client-side,
+    // against the already-indexed fields on `users`/`profiles` (see
+    // communicationSegmentsRepository.ts) — this collection never grows
+    // with the member base, only with how many named segments admins
+    // choose to save, so it needs no pagination/limit rule at all.
+    function isValidCommunicationSegmentShape(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() <= 100
+        && data.type in ['everyone', 'batch', 'city', 'openToWork', 'founders', 'customUids']
+        && isValidBatchNumberOrNull(data.batchNumber)
+        && data.cityCanonical is string && data.cityCanonical.size() <= 120
+        && data.customUids is list && data.customUids.size() <= 50
+        && data.createdByUid is string
+        && data.keys().hasOnly(
+             ['name', 'type', 'batchNumber', 'cityCanonical', 'customUids', 'createdByUid',
+              'createdAt', 'updatedAt']
+           );
+    }
+
+    match /communicationSegments/{segmentId} {
+      // Any admin tier may define/read/resolve/delete a segment — an
+      // organizational productivity tool, not a permission-sensitive
+      // action like role assignment, same trust level already extended
+      // to batch_admin for Reports/the audit log.
+      allow get: if callerIsAnyAdmin();
+      allow list: if callerIsAnyAdmin();
+      allow create: if callerIsAnyAdmin()
+        && request.resource.data.createdByUid == request.auth.uid
+        && isValidCommunicationSegmentShape(request.resource.data);
+      // createdByUid stays fixed to whoever originally authored the
+      // segment (not necessarily the admin editing it later) — mirrors
+      // organizerUid/postedByUid's immutable-identity-field pattern
+      // used for events/jobs elsewhere in this file.
+      allow update: if callerIsAnyAdmin()
+        && request.resource.data.createdByUid == resource.data.createdByUid
+        && isValidCommunicationSegmentShape(request.resource.data);
+      allow delete: if callerIsAnyAdmin();
     }
 
     // Everything else stays deny-by-default until a later phase defines

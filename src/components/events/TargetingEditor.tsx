@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Button } from '../ui/Button';
 import { allBatches } from '../../lib/batches';
+import { normalizeCity, normalizeCityLower } from '../../lib/geography';
 import { findUserByEmail } from '../../firebase/repositories/usersRepository';
 import {
   EVENT_TARGET_TYPES,
@@ -39,10 +40,17 @@ export function TargetingEditor({
   const [selectedPeople, setSelectedPeople] = useState<SelectedPerson[]>([]);
   const [lookupError, setLookupError] = useState<string | null>(null);
   const [looking, setLooking] = useState(false);
+  // Raw text the organizer is typing, kept separate from the normalized
+  // `value.targetCityLower` that actually gets saved — reformatting the
+  // input on every keystroke (as normalizeCity() would do to a
+  // controlled value) is a jarring UX; this keeps what's on screen
+  // exactly what was typed while still storing the canonical key.
+  const [cityDraft, setCityDraft] = useState('');
 
   function setType(targetType: EventTargetType) {
     onChange({ targetType, targetBatchNumbers: [], targetCityLower: '', targetUids: [] });
     setSelectedPeople([]);
+    setCityDraft('');
   }
 
   function toggleBatch(batchNumber: number) {
@@ -115,13 +123,29 @@ export function TargetingEditor({
       )}
 
       {value.targetType === 'city' && (
-        <input
-          type="text"
-          placeholder="e.g. Bengaluru"
-          value={value.targetCityLower}
-          onChange={(e) => onChange({ ...value, targetCityLower: e.target.value.toLowerCase() })}
-          className="mt-sm block w-full max-w-[320px] rounded-sm border border-hairline px-md py-xs text-body-md"
-        />
+        <div className="mt-sm">
+          <input
+            type="text"
+            placeholder="e.g. Bengaluru or Bangalore"
+            value={cityDraft}
+            onChange={(e) => {
+              setCityDraft(e.target.value);
+              onChange({ ...value, targetCityLower: normalizeCityLower(e.target.value) });
+            }}
+            className="block w-full max-w-[320px] rounded-sm border border-hairline px-md py-xs text-body-md"
+          />
+          {/* Phase 14: the city is normalized against a controlled reference
+              table (src/lib/geography.ts) before it's stored, the same
+              table a profile's own city is normalized against — so an
+              event targeted at "Bangalore" reaches members whose profile
+              says "Bengaluru" (or vice versa) instead of missing them on
+              a raw-text mismatch. */}
+          {value.targetCityLower && (
+            <p className="mt-xs text-caption text-muted">
+              Will reach members whose city matches: <strong>{normalizeCity(value.targetCityLower)}</strong>
+            </p>
+          )}
+        </div>
       )}
 
       {value.targetType === 'selected' && (

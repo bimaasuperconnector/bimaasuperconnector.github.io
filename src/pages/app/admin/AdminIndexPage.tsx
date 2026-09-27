@@ -19,6 +19,7 @@ import {
 import { type AdminMetrics, loadAdminMetrics } from '../../../firebase/repositories/adminMetricsRepository';
 import { type Report, queryOpenReports, setReportStatus } from '../../../firebase/repositories/reportsRepository';
 import { type AuditLogEntry, queryRecentAuditLogs } from '../../../firebase/repositories/auditLogsRepository';
+import { CommunicationSegments } from '../../../components/admin/CommunicationSegments';
 
 function MetricsDashboard() {
   const [metrics, setMetrics] = useState<AdminMetrics | null>(null);
@@ -375,6 +376,7 @@ export function AdminIndexPage() {
     <MetricsDashboard />
     <ReportsQueue />
     {isSuperAdmin && <RoleManagement />}
+    <CommunicationSegments />
     <AuditLogViewer />
     <div className="mt-lg rounded-md border border-hairline p-xl">
       <h1 className="text-title-lg text-ink">Pending approvals</h1>

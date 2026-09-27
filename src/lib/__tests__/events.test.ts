@@ -19,7 +19,7 @@ describe('canViewEvent', () => {
     expect(
       canViewEvent(
         { ...base, targetType: 'selected', targetUids: ['someone-else'] },
-        { uid: 'organizer-1', batchNumber: null, locationLower: '' },
+        { uid: 'organizer-1', batchNumber: null, cityCanonicalLower: '' },
       ),
     ).toBe(true);
   });
@@ -28,29 +28,29 @@ describe('canViewEvent', () => {
     expect(
       canViewEvent(
         { ...base, targetType: 'everyone' },
-        { uid: 'viewer-1', batchNumber: null, locationLower: '' },
+        { uid: 'viewer-1', batchNumber: null, cityCanonicalLower: '' },
       ),
     ).toBe(true);
   });
 
   it('batch targeting matches only a viewer whose batch is listed', () => {
     const event = { ...base, targetType: 'batch' as const, targetBatchNumbers: [12, 13] };
-    expect(canViewEvent(event, { uid: 'v', batchNumber: 12, locationLower: '' })).toBe(true);
-    expect(canViewEvent(event, { uid: 'v', batchNumber: 20, locationLower: '' })).toBe(false);
-    expect(canViewEvent(event, { uid: 'v', batchNumber: null, locationLower: '' })).toBe(false);
+    expect(canViewEvent(event, { uid: 'v', batchNumber: 12, cityCanonicalLower: '' })).toBe(true);
+    expect(canViewEvent(event, { uid: 'v', batchNumber: 20, cityCanonicalLower: '' })).toBe(false);
+    expect(canViewEvent(event, { uid: 'v', batchNumber: null, cityCanonicalLower: '' })).toBe(false);
   });
 
   it('city targeting matches on lowercase location and never on an empty city', () => {
     const event = { ...base, targetType: 'city' as const, targetCityLower: 'bengaluru' };
-    expect(canViewEvent(event, { uid: 'v', batchNumber: null, locationLower: 'bengaluru' })).toBe(true);
-    expect(canViewEvent(event, { uid: 'v', batchNumber: null, locationLower: 'mumbai' })).toBe(false);
-    expect(canViewEvent(event, { uid: 'v', batchNumber: null, locationLower: '' })).toBe(false);
+    expect(canViewEvent(event, { uid: 'v', batchNumber: null, cityCanonicalLower: 'bengaluru' })).toBe(true);
+    expect(canViewEvent(event, { uid: 'v', batchNumber: null, cityCanonicalLower: 'mumbai' })).toBe(false);
+    expect(canViewEvent(event, { uid: 'v', batchNumber: null, cityCanonicalLower: '' })).toBe(false);
   });
 
   it('selected targeting matches only listed uids', () => {
     const event = { ...base, targetType: 'selected' as const, targetUids: ['a', 'b'] };
-    expect(canViewEvent(event, { uid: 'a', batchNumber: null, locationLower: '' })).toBe(true);
-    expect(canViewEvent(event, { uid: 'z', batchNumber: null, locationLower: '' })).toBe(false);
+    expect(canViewEvent(event, { uid: 'a', batchNumber: null, cityCanonicalLower: '' })).toBe(true);
+    expect(canViewEvent(event, { uid: 'z', batchNumber: null, cityCanonicalLower: '' })).toBe(false);
   });
 });
 
