@@ -76,14 +76,27 @@ export interface UploadResult {
   fileId: string;
 }
 
+/** Reads the Worker's short error text, if it sent one. */
+async function readWorkerError(response: Response): Promise<string> {
+  try {
+    const body = (await response.json()) as { error?: unknown };
+    return typeof body.error === 'string' ? body.error : '';
+  } catch {
+    return '';
+  }
+}
+
 /** Turns a Worker error response into a message a member can act on. */
-function messageForStatus(status: number): string {
+function messageForStatus(status: number, serverMessage: string): string {
   if (status === 401) return 'Your sign-in has expired. Please refresh the page and try again.';
   if (status === 403) return 'Only approved alumni can upload a profile photo.';
   if (status === 413) return 'That photo is too large after processing. Please try a different image.';
   if (status === 415) return 'That image format is not supported. Please choose a JPEG, PNG or WebP photo.';
   if (status === 429) return 'Too many attempts. Please wait a minute and try again.';
-  return "Couldn't upload the photo. Please try again.";
+  // Anything else (400/411/500/502/503...) is a setup or service problem:
+  // show the Worker's own explanation so it can actually be fixed.
+  const detail = serverMessage ? `: ${serverMessage}` : '';
+  return `Couldn't upload the photo (error ${status}${detail}).`;
 }
 
 /**
@@ -100,7 +113,12 @@ export async function uploadProfilePhoto(user: FirebaseUser, blob: Blob): Promis
   if (!workerUrl) {
     throw new PhotoUploadError('Photo upload is not configured yet.');
   }
-  const idToken = await user.getIdToken();
+  let idToken: string;
+  try {
+    idToken = await user.getIdToken();
+  } catch {
+    throw new PhotoUploadError('Could not confirm your sign-in. Please refresh the page and try again.');
+  }
   const form = new FormData();
   form.append('file', blob, blob.type === 'image/jpeg' ? 'profile.jpg' : 'profile.webp');
 
@@ -115,11 +133,18 @@ export async function uploadProfilePhoto(user: FirebaseUser, blob: Blob): Promis
     throw new PhotoUploadError('Network problem while uploading. Please check your connection and try again.');
   }
   if (!response.ok) {
-    throw new PhotoUploadError(messageForStatus(response.status));
+    throw new PhotoUploadError(messageForStatus(response.status, await readWorkerError(response)));
   }
-  const result = (await response.json()) as Partial<UploadResult>;
+  let result: Partial<UploadResult> = {};
+  try {
+    result = (await response.json()) as Partial<UploadResult>;
+  } catch {
+    // handled by the shape check below
+  }
   if (typeof result.url !== 'string' || typeof result.fileId !== 'string') {
-    throw new PhotoUploadError("Couldn't upload the photo. Please try again.");
+    throw new PhotoUploadError(
+      'The photo service returned an unexpected reply. Check the Worker URL (VITE_PHOTO_WORKER_URL) points to your Worker.',
+    );
   }
   return { url: result.url, fileId: result.fileId };
 }

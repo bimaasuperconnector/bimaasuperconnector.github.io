@@ -284,9 +284,23 @@ async function handleUpload(request, env) {
       body: upstream,
     });
   } catch {
-    throw new HttpError(502, 'Photo service unreachable.');
+    throw new HttpError(502, 'Photo service (ImageKit) could not be reached.');
   }
-  if (!response.ok) throw new HttpError(502, 'Photo service rejected the upload.');
+  if (!response.ok) {
+    // ImageKit's own error text (e.g. "Your account cannot be authenticated"
+    // for a wrong private key) is safe to pass on and makes setup
+    // mistakes obvious. It never contains the key.
+    let detail = '';
+    try {
+      detail = String((await response.json()).message || '').slice(0, 150);
+    } catch {
+      // non-JSON error body — status code alone is still useful
+    }
+    throw new HttpError(
+      502,
+      `ImageKit rejected the upload (HTTP ${response.status})${detail ? `: ${detail}` : ''}`,
+    );
+  }
   const result = await response.json();
   if (
     typeof result.url !== 'string' ||
