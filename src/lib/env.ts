@@ -37,3 +37,24 @@ export function isFirebaseConfigured(): boolean {
   const config = getFirebaseConfig();
   return Boolean(config.apiKey && config.authDomain && config.projectId && config.appId);
 }
+
+/**
+ * Profile-photo backend configuration. The frontend never talks to
+ * ImageKit directly: it sends the (already cropped/compressed) photo to
+ * a Cloudflare Worker, which verifies the member's Firebase sign-in,
+ * checks they are an approved alumnus, validates the file, and uploads
+ * it to ImageKit using the ImageKit private key stored ONLY as a
+ * Cloudflare Worker secret. The Worker's public URL is not a secret —
+ * it is safe as a plain GitHub Actions Variable, like the Firebase
+ * web config above. Neither the ImageKit public key nor the ImageKit
+ * URL endpoint are needed in the frontend at all anymore; the Worker
+ * returns the finished photo URL.
+ */
+export function getPhotoWorkerUrl(): string {
+  // Strip any trailing slash so `${url}/upload` never produces `//upload`.
+  return readEnv('VITE_PHOTO_WORKER_URL').replace(/\/+$/, '');
+}
+
+export function isPhotoUploadConfigured(): boolean {
+  return getPhotoWorkerUrl() !== '';
+}

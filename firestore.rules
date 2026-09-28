@@ -114,6 +114,23 @@ service cloud.firestore {
         && data.currentOrganizationName is string && data.currentOrganizationName.size() <= 200
         && data.currentTitle is string && data.currentTitle.size() <= 200
         && isValidContactVisibleMap(data.contactVisible)
+        // 2026-09-27 addition: up to 5 badges the member has chosen to
+        // display, denormalized from badges/{badgeId} at the time of
+        // selection (id/name/colorKey) — see ProfileBadgeRef in
+        // profilesRepository.ts. The badge CATALOG (create/edit/delete)
+        // is admin-controlled separately in the badges/{badgeId}
+        // collection further down; this is just the member's own choice
+        // of up to 5 from that catalog. Bounds/type-checked at the list
+        // level only, consistent with organizations/education elsewhere
+        // in this function — Firestore Rules has no clean way to
+        // shape-check every element of a list of maps (see the
+        // skillsLower/interestsLower note above for the same, earlier,
+        // accepted gap in this file).
+        && data.badges is list && data.badges.size() <= 5
+        // 2026-09-27 addition: ImageKit-hosted profile photo (see
+        // ProfilePhotoUpload.tsx). photoFileId lets a replace/remove ask
+        // the Cloudflare Worker (cloudflare-worker/imagekit-worker.js) clean up the previous ImageKit asset.
+        && (data.photoFileId == null || (data.photoFileId is string && data.photoFileId.size() <= 100))
         // Denormalized from the caller's OWN approval status at save
         // time. Always required true here (create/update both require
         // callerIsApproved() independently), which makes directory
@@ -129,13 +146,43 @@ service cloud.firestore {
         && data.approved == true
         && isValidBatchNumberOrNull(data.batchNumber)
         && data.keys().hasOnly(
-             ['uid', 'displayName', 'displayNameLower', 'photoURL', 'batchNumber', 'headline',
+             ['uid', 'displayName', 'displayNameLower', 'photoURL', 'photoFileId', 'batchNumber', 'headline',
               'bio', 'location', 'locationLower', 'cityCanonical', 'cityCanonicalLower', 'organizations',
               'education', 'skills', 'skillsLower', 'interests', 'interestsLower', 'networkingPurpose',
               'links', 'isComplete', 'openToWork', 'openToWorkRoles', 'openToWorkNote', 'hasFounderOrg',
-              'currentOrganizationName', 'currentTitle', 'approved', 'contactVisible',
+              'currentOrganizationName', 'currentTitle', 'approved', 'contactVisible', 'badges',
               'createdAt', 'updatedAt']
            );
+    }
+
+    // 2026-09-27 addition: super_admin-managed badge catalog (e.g.
+    // "Messcom", "Finclub", "Astronomy Club"). Small, admin-created
+    // collection — bounded by how many badges an admin defines, never
+    // by member count, so an unfiltered `list` here is safe at any
+    // alumni-base size (same "small, admin-managed, unfiltered list is
+    // fine" reasoning already applied to segment definitions in Phase
+    // 14's communicationSegments). Read access is any approved member
+    // (needed for the Profile-edit badge picker); writes are
+    // super_admin-only, the same trust tier as role management, since a
+    // badge is a platform-wide taxonomy decision, not a batch-scoped one.
+    function isValidBadgeShape(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() <= 40
+        && data.colorKey is string
+        && data.colorKey in ['coral', 'forest', 'cream', 'peach', 'mint', 'yellow', 'mustard', 'ink']
+        && data.createdByUid is string
+        && data.keys().hasOnly(['name', 'colorKey', 'createdByUid', 'createdAt', 'updatedAt']);
+    }
+
+    match /badges/{badgeId} {
+      allow get: if callerIsApproved() || callerIsAnyAdmin();
+      allow list: if callerIsApproved() || callerIsAnyAdmin();
+      allow create: if callerIsSuperAdmin()
+        && request.resource.data.createdByUid == request.auth.uid
+        && isValidBadgeShape(request.resource.data);
+      allow update: if callerIsSuperAdmin()
+        && request.resource.data.createdByUid == resource.data.createdByUid
+        && isValidBadgeShape(request.resource.data);
+      allow delete: if callerIsSuperAdmin();
     }
 
     function isValidRegistrationShape(data) {

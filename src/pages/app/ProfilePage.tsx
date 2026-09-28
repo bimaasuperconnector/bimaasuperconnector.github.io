@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useUserRecord } from '../../context/UserRecordContext';
 import { Button } from '../../components/ui/Button';
@@ -6,6 +6,10 @@ import { TagInput } from '../../components/profile/TagInput';
 import { OrganizationsEditor } from '../../components/profile/OrganizationsEditor';
 import { EducationEditor } from '../../components/profile/EducationEditor';
 import { ContactPrivacyEditor } from '../../components/profile/ContactPrivacyEditor';
+import { deleteProfilePhotoAsset } from '../../lib/photoUpload';
+import { ProfilePhotoUpload } from '../../components/profile/ProfilePhotoUpload';
+import { BadgePicker } from '../../components/profile/BadgePicker';
+import { BadgeChips } from '../../components/profile/BadgeChips';
 import { ContactButtons } from '../../components/directory/ContactButtons';
 import { allBatches, findBatch } from '../../lib/batches';
 import {
@@ -34,6 +38,11 @@ export function ProfilePage() {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // ImageKit file IDs, for cleanup AFTER a successful save only (see
+  // handleSave): the fileId currently stored in Firestore, and every
+  // fileId uploaded during this edit session that may end up unused.
+  const savedPhotoFileId = useRef<string | null>(null);
+  const uploadedThisSession = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!user) return;
@@ -50,6 +59,7 @@ export function ProfilePage() {
         // (users/{uid}.displayName, already loaded via UserRecordContext
         // — zero extra reads) rather than starting blank, which is what
         // produced "Unnamed alum" before a member's first resave.
+        savedPhotoFileId.current = profileResult?.photoFileId ?? null;
         setProfile(
           profileResult ?? emptyProfile(user.uid, record?.displayName ?? user.displayName ?? ''),
         );
@@ -87,6 +97,16 @@ export function ProfilePage() {
         profile.displayName.trim() !== '' && profile.batchNumber !== null && profile.headline.trim() !== '';
       await saveOwnProfile(user, { ...profile, isComplete });
       await saveOwnProfileContact(user.uid, contact);
+      // The photo change is now really saved, so it is finally safe to
+      // delete ImageKit assets that are no longer referenced: the
+      // previously-saved photo (if replaced/removed) and any photo
+      // uploaded this session but not chosen in the end. Best-effort.
+      const stale = new Set(uploadedThisSession.current);
+      if (savedPhotoFileId.current) stale.add(savedPhotoFileId.current);
+      if (profile.photoFileId) stale.delete(profile.photoFileId);
+      stale.forEach((fileId) => void deleteProfilePhotoAsset(user, fileId));
+      savedPhotoFileId.current = profile.photoFileId;
+      uploadedThisSession.current = new Set();
       setProfile({ ...profile, isComplete });
       setEditing(false);
     } catch {
@@ -107,8 +127,8 @@ export function ProfilePage() {
       <div className="rounded-md border border-hairline p-xl">
         <div className="flex items-start justify-between gap-md">
           <div className="flex items-center gap-md">
-            {user?.photoURL && (
-              <img src={user.photoURL} alt="" className="h-16 w-16 rounded-full" />
+            {profile.photoURL && (
+              <img src={profile.photoURL} alt="" className="h-16 w-16 rounded-full object-cover" />
             )}
             <div>
               <h1 className="text-title-lg text-ink">{profile.displayName || 'Add your name'}</h1>
@@ -120,6 +140,12 @@ export function ProfilePage() {
             Edit profile
           </Button>
         </div>
+
+        {profile.badges.length > 0 && (
+          <div className="mt-lg">
+            <BadgeChips badges={profile.badges} />
+          </div>
+        )}
 
         {!profile.isComplete && (
           <p className="mt-lg rounded-sm bg-surface-soft p-md text-body-md text-body">
@@ -201,6 +227,17 @@ export function ProfilePage() {
       {error && <p className="mt-sm text-body-md text-signature-coral">{error}</p>}
 
       <div className="mt-lg space-y-lg">
+        {user && (
+          <ProfilePhotoUpload
+            user={user}
+            photoURL={profile.photoURL}
+            onChange={({ photoURL, photoFileId }) => {
+              if (photoFileId) uploadedThisSession.current.add(photoFileId);
+              setProfile({ ...profile, photoURL, photoFileId });
+            }}
+          />
+        )}
+
         <div>
           <label className="text-label-md text-ink" htmlFor="displayName">
             Name
@@ -335,6 +372,11 @@ export function ProfilePage() {
             ))}
           </div>
         </div>
+
+        <BadgePicker
+          selected={profile.badges}
+          onChange={(badges) => setProfile({ ...profile, badges })}
+        />
 
         <div>
           <label className="text-label-md text-ink" htmlFor="website">

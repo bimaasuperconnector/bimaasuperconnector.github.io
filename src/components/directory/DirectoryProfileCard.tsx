@@ -1,6 +1,7 @@
 import type { Profile } from '../../firebase/repositories/profilesRepository';
 import { findBatch } from '../../lib/batches';
 import { ContactButtons } from './ContactButtons';
+import { BadgeChips } from '../profile/BadgeChips';
 
 export function DirectoryProfileCard({ profile }: { profile: Profile }) {
   const batch = profile.batchNumber !== null ? findBatch(profile.batchNumber) : undefined;
@@ -32,6 +33,12 @@ export function DirectoryProfileCard({ profile }: { profile: Profile }) {
           )}
         </div>
       </div>
+
+      {profile.badges.length > 0 && (
+        <div className="mt-sm">
+          <BadgeChips badges={profile.badges} />
+        </div>
+      )}
 
       {profile.headline && <p className="mt-sm text-body-md text-body">{profile.headline}</p>}
 

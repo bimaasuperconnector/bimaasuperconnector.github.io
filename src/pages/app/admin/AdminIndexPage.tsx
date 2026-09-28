@@ -20,6 +20,7 @@ import { type AdminMetrics, loadAdminMetrics } from '../../../firebase/repositor
 import { type Report, queryOpenReports, setReportStatus } from '../../../firebase/repositories/reportsRepository';
 import { type AuditLogEntry, queryRecentAuditLogs } from '../../../firebase/repositories/auditLogsRepository';
 import { CommunicationSegments } from '../../../components/admin/CommunicationSegments';
+import { BadgesManagement } from '../../../components/admin/BadgesManagement';
 
 function MetricsDashboard() {
   const [metrics, setMetrics] = useState<AdminMetrics | null>(null);
@@ -376,6 +377,7 @@ export function AdminIndexPage() {
     <MetricsDashboard />
     <ReportsQueue />
     {isSuperAdmin && <RoleManagement />}
+    {isSuperAdmin && <BadgesManagement />}
     <CommunicationSegments />
     <AuditLogViewer />
     <div className="mt-lg rounded-md border border-hairline p-xl">

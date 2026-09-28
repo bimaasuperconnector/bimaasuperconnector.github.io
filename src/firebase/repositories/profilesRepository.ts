@@ -83,6 +83,28 @@ export interface ContactVisibleMap {
   linkedin?: string;
 }
 
+/**
+ * A badge a member has chosen to display on their profile — denormalized
+ * (id + the badge's name/colorKey AT THE TIME IT WAS SELECTED) directly
+ * onto profiles/{uid} so Directory/Open to Work/Entrepreneurship cards
+ * can render badge chips at zero extra Firestore read cost, the same
+ * "denormalize onto the profile doc already being fetched" pattern used
+ * throughout this project (currentOrganizationName, hasFounderOrg,
+ * contactVisible). The badge catalog itself lives in badges/{badgeId}
+ * (see badgesRepository.ts) and is only read on the Profile edit page,
+ * to power the picker. If a super_admin later renames a badge, an
+ * already-selected member's card shows the old name until they next
+ * resave their profile — the same self-healing-on-next-save tradeoff
+ * this project has accepted for every other denormalized field.
+ */
+export interface ProfileBadgeRef {
+  id: string;
+  name: string;
+  colorKey: string;
+}
+
+export const MAX_PROFILE_BADGES = 5;
+
 /** Fields the profile owner edits directly. */
 export interface ProfileFormFields {
   /**
@@ -129,6 +151,21 @@ export interface ProfileFormFields {
   openToWorkRoles: string[];
   /** Optional free-text note, e.g. availability or constraints. */
   openToWorkNote: string;
+  /** Up to MAX_PROFILE_BADGES badges the member has chosen to display — see ProfileBadgeRef above. */
+  badges: ProfileBadgeRef[];
+  /**
+   * ImageKit-hosted profile photo (2026-09-27 addition). Owner-uploaded,
+   * via ProfilePhotoUpload.tsx — replaces the old "always mirrored from
+   * the live Google account photoURL" behavior from Phase 0/saveOwnProfile.
+   * `photoURL` is the public delivery URL (safe to read/display
+   * anywhere); `photoFileId` is ImageKit's internal file identifier,
+   * kept so a replace/remove can ask the Cloudflare Worker to delete the
+   * previous asset. Both null until the member uploads a photo, in
+   * which case the Profile page falls back to the Google account photo
+   * for display only (never stored here).
+   */
+  photoURL: string | null;
+  photoFileId: string | null;
 }
 
 /**
@@ -147,7 +184,6 @@ export interface ProfileFormFields {
 export interface Profile extends ProfileFormFields {
   uid: string;
   displayNameLower: string;
-  photoURL: string | null;
   locationLower: string;
   /**
    * Phase 14 addition: `location` normalized against a controlled
@@ -200,6 +236,8 @@ const ALLOWED_TOP_LEVEL_FIELDS = [
   'currentTitle',
   'approved',
   'contactVisible',
+  'badges',
+  'photoFileId',
   'createdAt',
   'updatedAt',
 ] as const;
@@ -220,6 +258,7 @@ function fromSnapshot(uid: string, data: DocumentData): Profile {
     displayName: data.displayName ?? '',
     displayNameLower: data.displayNameLower ?? '',
     photoURL: data.photoURL ?? null,
+    photoFileId: typeof data.photoFileId === 'string' ? data.photoFileId : null,
     batchNumber: typeof data.batchNumber === 'number' ? data.batchNumber : null,
     headline: data.headline ?? '',
     bio: data.bio ?? '',
@@ -248,15 +287,47 @@ function fromSnapshot(uid: string, data: DocumentData): Profile {
     hasFounderOrg: data.hasFounderOrg === true,
     currentOrganizationName: data.currentOrganizationName ?? '',
     currentTitle: data.currentTitle ?? '',
-    contactVisible: {
-      phone: typeof data.contactVisible?.phone === 'string' ? data.contactVisible.phone : undefined,
-      whatsapp:
-        typeof data.contactVisible?.whatsapp === 'string' ? data.contactVisible.whatsapp : undefined,
-      email: typeof data.contactVisible?.email === 'string' ? data.contactVisible.email : undefined,
-      linkedin:
-        typeof data.contactVisible?.linkedin === 'string' ? data.contactVisible.linkedin : undefined,
-    },
+    // BUGFIX (2026-09-27): must OMIT a key entirely for a channel that
+    // isn't revealed, never include it with an explicit `undefined`
+    // value. The previous version built { phone: undefined, ... } for
+    // any channel not currently visible — which is the common case for
+    // almost every profile, since contactVisible only ever gains a key
+    // when a member switches a channel on. The Firestore JS SDK throws
+    // ("Unsupported field value: undefined") on ANY write containing a
+    // literal `undefined`, at ANY nesting depth, before the request
+    // even reaches the network. Because ProfilePage's handleSave()
+    // always spreads the full in-memory profile (including this
+    // round-tripped contactVisible map) back into saveOwnProfile(),
+    // this made EVERY save of an already-existing profile throw
+    // immediately and surface as "Couldn't save your profile" — for
+    // any edit at all, not just contact-related ones. See
+    // isValidContactVisibleMap in firestore.rules, which already
+    // expects (and only ever allows) a map with just the *present*
+    // keys — this fix makes the client actually produce that shape.
+    contactVisible: buildContactVisibleFromSnapshot(data.contactVisible),
+    badges: parseBadgesFromSnapshot(data.badges),
   };
+}
+
+function buildContactVisibleFromSnapshot(raw: unknown): ContactVisibleMap {
+  const map: ContactVisibleMap = {};
+  const source = raw as Record<string, unknown> | undefined;
+  if (typeof source?.phone === 'string') map.phone = source.phone;
+  if (typeof source?.whatsapp === 'string') map.whatsapp = source.whatsapp;
+  if (typeof source?.email === 'string') map.email = source.email;
+  if (typeof source?.linkedin === 'string') map.linkedin = source.linkedin;
+  return map;
+}
+
+function parseBadgesFromSnapshot(raw: unknown): ProfileBadgeRef[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter(
+      (b): b is ProfileBadgeRef =>
+        b && typeof b === 'object' && typeof b.id === 'string' && typeof b.name === 'string',
+    )
+    .slice(0, MAX_PROFILE_BADGES)
+    .map((b) => ({ id: b.id, name: b.name, colorKey: typeof b.colorKey === 'string' ? b.colorKey : 'ink' }));
 }
 
 /**
@@ -271,6 +342,7 @@ export function emptyProfile(uid: string, seedDisplayName = ''): Profile {
     displayName: seedDisplayName,
     displayNameLower: seedDisplayName.toLowerCase(),
     photoURL: null,
+    photoFileId: null,
     batchNumber: null,
     headline: '',
     bio: '',
@@ -294,6 +366,7 @@ export function emptyProfile(uid: string, seedDisplayName = ''): Profile {
     currentOrganizationName: '',
     currentTitle: '',
     contactVisible: {},
+    badges: [],
   };
 }
 
@@ -337,10 +410,22 @@ export async function saveOwnProfile(user: FirebaseUser, fields: ProfileFormFiel
   // never produces the empty string firestore.rules now rejects anyway.
   const name = fields.displayName.trim() || user.displayName?.trim() || '';
   const currentOrg = fields.organizations.find((org) => org.endYear === null);
+  // 2026-09-27: photoURL used to be unconditionally re-mirrored from the
+  // live Google Auth photoURL on every save (Phase 0's original "no
+  // upload flow" decision). Now that ProfilePhotoUpload.tsx lets a
+  // member upload their own photo to ImageKit, photoURL/photoFileId are
+  // owner-edited fields like any other. A brand-new profile that hasn't
+  // uploaded a photo yet still falls back to the Google account photo
+  // once, here, so "no photo at all" never happens for a new member;
+  // once a profile already exists, this fallback is skipped so
+  // deliberately removing a photo (fields.photoURL === null) actually
+  // clears it instead of silently re-adding the Google photo back.
+  const photoURL = fields.photoURL ?? (existing.exists() ? null : user.photoURL ?? null);
   const payload: Record<string, unknown> = {
     uid,
-    photoURL: user.photoURL ?? null,
     ...fields,
+    photoURL,
+    badges: fields.badges.slice(0, MAX_PROFILE_BADGES),
     displayName: name,
     displayNameLower: name.toLowerCase(),
     locationLower: fields.location.toLowerCase(),

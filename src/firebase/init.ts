@@ -1,6 +1,6 @@
 import { type FirebaseApp, getApps, initializeApp } from 'firebase/app';
 import { type Auth, getAuth } from 'firebase/auth';
-import { type Firestore, getFirestore } from 'firebase/firestore';
+import { type Firestore, initializeFirestore } from 'firebase/firestore';
 import { getFirebaseConfig, isFirebaseConfigured } from '../lib/env';
 
 /**
@@ -29,7 +29,16 @@ export const firebaseConfigured = isFirebaseConfigured();
 if (firebaseConfigured) {
   app = getApps().length ? getApps()[0] : initializeApp(getFirebaseConfig());
   auth = getAuth(app);
-  db = getFirestore(app);
+  // BUGFIX (2026-09-27), defense-in-depth alongside the profilesRepository.ts
+  // fix: the default Firestore client throws ("Unsupported field value:
+  // undefined") if ANY write, anywhere in the app, ever contains a
+  // literal `undefined` at any nesting depth — this is exactly what
+  // caused every profile save to fail (see profilesRepository.ts's
+  // fromSnapshot fix for the root cause). ignoreUndefinedProperties
+  // makes the SDK silently omit such fields instead of throwing, which
+  // is what every write path in this codebase already assumes. This
+  // does not change behavior for any well-formed write.
+  db = initializeFirestore(app, { ignoreUndefinedProperties: true });
 } else {
   // Do not throw at import time: the landing page and static routes must
   // still render (e.g. during local development before configuration is

@@ -46,6 +46,11 @@ jobs:
           VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ vars.VITE_FIREBASE_MESSAGING_SENDER_ID }}
           VITE_FIREBASE_APP_ID: ${{ vars.VITE_FIREBASE_APP_ID }}
           VITE_FIREBASE_MEASUREMENT_ID: ${{ vars.VITE_FIREBASE_MEASUREMENT_ID }}
+          # Profile-photo Worker URL (Cloudflare Worker that verifies the
+          # member's Firebase sign-in and uploads to ImageKit). It is just
+          # a public URL, not a secret — the ImageKit private key lives
+          # only inside the Worker as a Cloudflare secret.
+          VITE_PHOTO_WORKER_URL: ${{ vars.VITE_PHOTO_WORKER_URL }}
         run: npm run build
 
       - name: Upload build artifact
