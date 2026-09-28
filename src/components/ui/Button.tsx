@@ -1,14 +1,15 @@
 import { type ButtonHTMLAttributes, type AnchorHTMLAttributes, forwardRef } from 'react';
+import { Link, type LinkProps } from 'react-router-dom';
 
 type Variant = 'primary' | 'secondary' | 'secondary-on-dark';
 
 const variantClasses: Record<Variant, string> = {
   primary:
-    'bg-primary text-on-primary active:bg-primary-active hover:bg-primary-active',
+    'bg-primary text-on-primary active:bg-primary-active active:text-on-primary hover:bg-primary-active',
   secondary:
-    'bg-canvas text-ink border border-hairline hover:border-border-strong',
+    'bg-canvas text-ink active:text-ink border border-hairline hover:border-border-strong',
   'secondary-on-dark':
-    'bg-canvas text-ink border border-hairline hover:border-border-strong',
+    'bg-canvas text-ink active:text-ink border border-hairline hover:border-border-strong',
 };
 
 const base =
@@ -35,4 +36,17 @@ type LinkButtonProps = AnchorHTMLAttributes<HTMLAnchorElement> & {
 
 export function LinkButton({ variant = 'primary', className = '', ...props }: LinkButtonProps) {
   return <a className={`${base} ${variantClasses[variant]} ${className}`} {...props} />;
+}
+
+type RouterLinkButtonProps = LinkProps & {
+  variant?: Variant;
+};
+
+/**
+ * Same look as LinkButton, but navigates client-side through React Router.
+ * A plain <a href="/login"> forces a full page load, which on GitHub Pages
+ * bounces through 404.html before the app boots — this avoids that.
+ */
+export function RouterLinkButton({ variant = 'primary', className = '', ...props }: RouterLinkButtonProps) {
+  return <Link className={`${base} ${variantClasses[variant]} ${className}`} {...props} />;
 }

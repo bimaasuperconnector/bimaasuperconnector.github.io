@@ -3,14 +3,16 @@ import { Container } from '../ui/Container';
 
 export function Footer() {
   return (
-    <footer className="bg-canvas py-xxl text-body-md text-muted">
-      <Container className="flex flex-col gap-lg md:flex-row md:items-center md:justify-between">
-        <p>© {new Date().getFullYear()} SuperConnector. For alumni, by alumni.</p>
-        <nav className="flex gap-lg">
-          <Link to="/terms" className="hover:text-ink">
+    <footer className="border-t border-hairline bg-canvas py-xl text-body-md text-muted md:py-xxl">
+      <Container className="flex flex-col gap-md md:flex-row md:items-center md:justify-between">
+        <p className="text-[14px] leading-relaxed">
+          © 2026 BIMAA SuperConnector. BIM, Trichy alma mater exclusive network
+        </p>
+        <nav aria-label="Legal" className="flex gap-lg">
+          <Link to="/terms" className="text-muted hover:text-ink">
             Terms
           </Link>
-          <Link to="/privacy" className="hover:text-ink">
+          <Link to="/privacy" className="text-muted hover:text-ink">
             Privacy
           </Link>
         </nav>

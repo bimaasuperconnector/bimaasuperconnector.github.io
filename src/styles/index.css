@@ -5,6 +5,11 @@
 @layer base {
   html {
     -webkit-text-size-adjust: 100%;
+    /* Smooth in-page anchor scrolling; the reduced-motion block below turns
+       it off. scroll-padding keeps anchor targets clear of the sticky
+       64px public header. */
+    scroll-behavior: smooth;
+    scroll-padding-top: 5rem;
   }
 
   body {
@@ -38,6 +43,35 @@
       animation-iteration-count: 1 !important;
       transition-duration: 0.01ms !important;
       scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+  /* One orchestrated moment: the landing illustration's three stages settle
+     in sequence on load. Reduced-motion users get the final state instantly
+     (the global reduced-motion rule above shortens the duration to ~0). */
+  @keyframes sc-rise {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  .sc-rise {
+    animation: sc-rise 0.6s ease-out both;
+  }
+
+  /* Reduced motion: no animation at all. (The global rule above only
+     shortens durations — the staggered animation-delay would still leave
+     the stages invisible for up to 0.6s.) */
+  @media (prefers-reduced-motion: reduce) {
+    .sc-rise {
+      animation: none;
     }
   }
 }
