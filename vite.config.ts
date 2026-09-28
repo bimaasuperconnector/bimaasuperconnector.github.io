@@ -36,7 +36,7 @@ export default defineConfig({
         short_name: 'SuperConnector',
         description:
           'A private alumni network, directory, and monthly connection engine.',
-        start_url: '/',
+        start_url: '/app',
         scope: '/',
         display: 'standalone',
         background_color: '#ffffff',

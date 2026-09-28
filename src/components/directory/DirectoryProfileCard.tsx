@@ -2,6 +2,7 @@ import type { Profile } from '../../firebase/repositories/profilesRepository';
 import { findBatch } from '../../lib/batches';
 import { ContactButtons } from './ContactButtons';
 import { BadgeChips } from '../profile/BadgeChips';
+import { Avatar } from '../ui/Avatar';
 
 export function DirectoryProfileCard({ profile }: { profile: Profile }) {
   const batch = profile.batchNumber !== null ? findBatch(profile.batchNumber) : undefined;
@@ -9,11 +10,7 @@ export function DirectoryProfileCard({ profile }: { profile: Profile }) {
   return (
     <div className="rounded-md border border-hairline p-md">
       <div className="flex items-center gap-sm">
-        {profile.photoURL ? (
-          <img src={profile.photoURL} alt="" className="h-12 w-12 rounded-full" />
-        ) : (
-          <div className="h-12 w-12 rounded-full bg-surface-soft" />
-        )}
+        <Avatar src={profile.photoURL} sizeClass="h-12 w-12" />
         <div className="min-w-0">
           <p className="truncate text-label-md text-ink">
             {profile.displayName || 'Unnamed alum'}

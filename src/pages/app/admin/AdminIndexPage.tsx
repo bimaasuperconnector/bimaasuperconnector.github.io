@@ -20,6 +20,7 @@ import { type AdminMetrics, loadAdminMetrics } from '../../../firebase/repositor
 import { type Report, queryOpenReports, setReportStatus } from '../../../firebase/repositories/reportsRepository';
 import { type AuditLogEntry, queryRecentAuditLogs } from '../../../firebase/repositories/auditLogsRepository';
 import { CommunicationSegments } from '../../../components/admin/CommunicationSegments';
+import { Avatar } from '../../../components/ui/Avatar';
 import { BadgesManagement } from '../../../components/admin/BadgesManagement';
 
 function MetricsDashboard() {
@@ -404,9 +405,7 @@ export function AdminIndexPage() {
               <li key={person.uid} className="rounded-sm border border-hairline p-md">
                 <div className="flex items-center justify-between gap-md">
                   <div className="flex items-center gap-sm">
-                    {person.photoURL && (
-                      <img src={person.photoURL} alt="" className="h-10 w-10 rounded-full" />
-                    )}
+                    <Avatar sizeClass="h-10 w-10" />
                     <div>
                       <p className="text-label-md text-ink">{person.displayName || 'Unnamed account'}</p>
                       <p className="text-body-md text-muted">

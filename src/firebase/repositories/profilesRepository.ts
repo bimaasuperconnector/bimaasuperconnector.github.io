@@ -257,7 +257,15 @@ function fromSnapshot(uid: string, data: DocumentData): Profile {
     uid,
     displayName: data.displayName ?? '',
     displayNameLower: data.displayNameLower ?? '',
-    photoURL: data.photoURL ?? null,
+    // Only a photo the member UPLOADED (which always has a photoFileId) is
+    // ever exposed. Older profiles saved before uploads existed may hold a
+    // mirrored Google account picture in photoURL with no photoFileId —
+    // those are deliberately hidden here, so no consumer (Directory,
+    // Open to Work, Entrepreneurship, the header, Profile) can ever show
+    // a Google picture. The stale value is also dropped on the member's
+    // next save (see saveOwnProfile).
+    photoURL:
+      typeof data.photoFileId === 'string' && typeof data.photoURL === 'string' ? data.photoURL : null,
     photoFileId: typeof data.photoFileId === 'string' ? data.photoFileId : null,
     batchNumber: typeof data.batchNumber === 'number' ? data.batchNumber : null,
     headline: data.headline ?? '',
@@ -410,17 +418,12 @@ export async function saveOwnProfile(user: FirebaseUser, fields: ProfileFormFiel
   // never produces the empty string firestore.rules now rejects anyway.
   const name = fields.displayName.trim() || user.displayName?.trim() || '';
   const currentOrg = fields.organizations.find((org) => org.endYear === null);
-  // 2026-09-27: photoURL used to be unconditionally re-mirrored from the
-  // live Google Auth photoURL on every save (Phase 0's original "no
-  // upload flow" decision). Now that ProfilePhotoUpload.tsx lets a
-  // member upload their own photo to ImageKit, photoURL/photoFileId are
-  // owner-edited fields like any other. A brand-new profile that hasn't
-  // uploaded a photo yet still falls back to the Google account photo
-  // once, here, so "no photo at all" never happens for a new member;
-  // once a profile already exists, this fallback is skipped so
-  // deliberately removing a photo (fields.photoURL === null) actually
-  // clears it instead of silently re-adding the Google photo back.
-  const photoURL = fields.photoURL ?? (existing.exists() ? null : user.photoURL ?? null);
+  // Only an UPLOADED photo (one with a photoFileId) is ever stored in
+  // photoURL. No Google account picture is ever mirrored or used as a
+  // fallback — a member with no uploaded photo simply has photoURL null
+  // and is shown the built-in placeholder (components/ui/Avatar.tsx).
+  // This also cleans out any Google URL a pre-upload profile still holds.
+  const photoURL = fields.photoFileId ? fields.photoURL : null;
   const payload: Record<string, unknown> = {
     uid,
     ...fields,

@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, NavLink, Outlet } from 'react-router-dom';
 import { Container } from '../ui/Container';
+import { Avatar } from '../ui/Avatar';
+import { subscribeToProfile } from '../../firebase/repositories/profilesRepository';
 import { useAuth } from '../../context/AuthContext';
 import { useUserRecord } from '../../context/UserRecordContext';
 import {
@@ -32,6 +34,15 @@ export function AppShell() {
   const { user, signOutUser } = useAuth();
   const { record } = useUserRecord();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  // The member's own UPLOADED photo (never their Google picture). One live
+  // listener on their own profile document: one read at sign-in, then one
+  // per change, so the header updates the moment a new photo is saved.
+  const [ownPhotoURL, setOwnPhotoURL] = useState<string | null>(null);
+  const ownUid = user?.uid;
+  useEffect(() => {
+    if (!ownUid) return;
+    return subscribeToProfile(ownUid, (profile) => setOwnPhotoURL(profile?.photoURL ?? null));
+  }, [ownUid]);
 
   const isAnyAdmin = record?.role === 'super_admin' || record?.role === 'batch_admin';
   const items = isAnyAdmin
@@ -79,9 +90,7 @@ export function AppShell() {
             </Link>
           </div>
           <div className="flex items-center gap-sm text-body-md text-body">
-            {user?.photoURL && (
-              <img src={user.photoURL} alt="" className="h-8 w-8 rounded-full" />
-            )}
+            <Avatar src={ownPhotoURL} sizeClass="h-8 w-8" />
             <span className="hidden sm:inline">{user?.displayName ?? user?.email}</span>
             <button
               type="button"

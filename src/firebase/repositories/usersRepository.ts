@@ -102,7 +102,8 @@ export async function submitOnboarding(
     uid: user.uid,
     email: user.email,
     displayName: fields.displayName.trim(),
-    photoURL: user.photoURL,
+    // Never store the Google account picture — only member-uploaded photos are used.
+    photoURL: null,
     batchNumber: fields.batchNumber,
     note: fields.note.trim(),
     status: 'pending',

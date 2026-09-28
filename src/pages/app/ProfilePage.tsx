@@ -9,6 +9,7 @@ import { ContactPrivacyEditor } from '../../components/profile/ContactPrivacyEdi
 import { deleteProfilePhotoAsset } from '../../lib/photoUpload';
 import { ProfilePhotoUpload } from '../../components/profile/ProfilePhotoUpload';
 import { BadgePicker } from '../../components/profile/BadgePicker';
+import { Avatar } from '../../components/ui/Avatar';
 import { BadgeChips } from '../../components/profile/BadgeChips';
 import { ContactButtons } from '../../components/directory/ContactButtons';
 import { allBatches, findBatch } from '../../lib/batches';
@@ -127,9 +128,7 @@ export function ProfilePage() {
       <div className="rounded-md border border-hairline p-xl">
         <div className="flex items-start justify-between gap-md">
           <div className="flex items-center gap-md">
-            {profile.photoURL && (
-              <img src={profile.photoURL} alt="" className="h-16 w-16 rounded-full object-cover" />
-            )}
+            <Avatar src={profile.photoURL} sizeClass="h-16 w-16" />
             <div>
               <h1 className="text-title-lg text-ink">{profile.displayName || 'Add your name'}</h1>
               {profile.headline && <p className="text-body-md text-body">{profile.headline}</p>}

@@ -1,9 +1,14 @@
 import { useEffect, useState } from 'react';
+import { Navigate } from 'react-router-dom';
 import { Container } from '../components/ui/Container';
 import { LinkButton } from '../components/ui/Button';
+import { useAuth } from '../context/AuthContext';
+import { useUserRecord } from '../context/UserRecordContext';
 import { getPublicStats, type PublicStats } from '../firebase/repositories/publicStatsRepository';
 
 export function LandingPage() {
+  const { user, loading: authLoading, configured } = useAuth();
+  const { record, loading: recordLoading, needsOnboarding } = useUserRecord();
   const [stats, setStats] = useState<PublicStats | null>(null);
 
   useEffect(() => {
@@ -15,6 +20,15 @@ export function LandingPage() {
       cancelled = true;
     };
   }, []);
+
+  // A member who is already signed in (Firebase keeps the session across
+  // closed tabs and the installed app) should land in the app, not be
+  // shown "Sign in with Google" again — the public landing page is for
+  // signed-out visitors.
+  if (configured && !authLoading && user && !recordLoading) {
+    if (record?.status === 'approved') return <Navigate to="/app" replace />;
+    if (record || needsOnboarding) return <Navigate to="/pending" replace />;
+  }
 
   return (
     <>

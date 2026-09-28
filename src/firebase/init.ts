@@ -15,9 +15,10 @@ import { getFirebaseConfig, isFirebaseConfigured } from '../lib/env';
  * Blaze (pay-as-you-go) billing plan even at zero usage, and the owner has
  * decided not to introduce that paid dependency (CLAUDE.md section 14: no
  * paid service without explicit approval — here, explicit decline).
- * Profile photos instead use the `photoURL` already provided by Google
- * Sign-In, at no additional cost. If a genuine need for file storage comes
- * up later, it must be raised and approved before being added back.
+ * Profile photos are uploaded by members themselves (ImageKit, via a
+ * Cloudflare Worker — see ProfilePhotoUpload.tsx); Google account
+ * pictures are never used. If a genuine need for file storage comes up
+ * later, it must be raised and approved before being added back.
  */
 
 let app: FirebaseApp | null = null;

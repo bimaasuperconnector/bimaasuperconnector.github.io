@@ -1,5 +1,6 @@
 import type { OrganizationEntry, Profile } from '../../firebase/repositories/profilesRepository';
 import { findBatch } from '../../lib/batches';
+import { Avatar } from '../ui/Avatar';
 import { ContactButtons } from '../directory/ContactButtons';
 
 /**
@@ -45,11 +46,7 @@ export function VentureCard({
       )}
 
       <div className="mt-md flex items-center gap-sm border-t border-hairline pt-md">
-        {profile.photoURL ? (
-          <img src={profile.photoURL} alt="" className="h-8 w-8 rounded-full" />
-        ) : (
-          <div className="h-8 w-8 rounded-full bg-surface-soft" />
-        )}
+        <Avatar src={profile.photoURL} sizeClass="h-8 w-8" />
         <div className="min-w-0">
           <p className="truncate text-body-md text-ink">{profile.displayName || 'Unnamed alum'}</p>
           {batch && <p className="text-caption text-muted">{batch.label}</p>}

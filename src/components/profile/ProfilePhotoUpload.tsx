@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import type { User as FirebaseUser } from 'firebase/auth';
 import { Button } from '../ui/Button';
+import { Avatar } from '../ui/Avatar';
 import {
   PhotoUploadError,
   compressToSquareWebp,
@@ -179,13 +180,7 @@ export function ProfilePhotoUpload({ user, photoURL, onChange }: ProfilePhotoUpl
     <div>
       <label className="text-label-md text-ink">Photo</label>
       <div className="mt-xs flex items-center gap-md">
-        {photoURL ? (
-          <img src={photoURL} alt="" className="h-16 w-16 rounded-full object-cover" />
-        ) : (
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-surface-soft text-caption text-muted">
-            No photo
-          </div>
-        )}
+        <Avatar src={photoURL} sizeClass="h-16 w-16" />
         <div className="flex flex-wrap gap-sm">
           <Button
             variant="secondary"
