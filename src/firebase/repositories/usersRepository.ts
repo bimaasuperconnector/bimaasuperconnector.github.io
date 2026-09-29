@@ -33,6 +33,19 @@ export interface UserRecord {
   assignedBatchNumbers: number[];
 }
 
+/**
+ * The batches an admin can approve applicants for: for a batch_admin,
+ * their OWN batch (chosen at sign-up) automatically, plus any extra
+ * batches a super_admin added. Mirrors `callerCoversBatch()` in
+ * firestore.rules — the Rules remain the real boundary. Returns
+ * `undefined` for a super_admin (unscoped: every batch).
+ */
+export function effectiveAdminBatches(record: UserRecord | null): number[] | undefined {
+  if (!record || record.role === 'super_admin') return undefined;
+  const own = record.batchNumber !== null ? [record.batchNumber] : [];
+  return Array.from(new Set([...own, ...record.assignedBatchNumbers]));
+}
+
 function usersCollection() {
   if (!db) throw new Error('Firestore is not configured.');
   return collection(db, 'users');

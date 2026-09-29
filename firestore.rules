@@ -48,17 +48,26 @@ service cloud.firestore {
       return callerHasUserDoc() && callerRecord().status == 'pending';
     }
 
-    // super_admin, or a batch_admin whose assignedBatchNumbers contains
-    // the batch the applicant chose at onboarding. This is a
-    // single-document get() check (used for a document `get`, never a
+    // A batch_admin automatically covers the batch they themselves chose
+    // at sign-up (users/{uid}.batchNumber — set once at onboarding and
+    // not editable afterwards), PLUS any extra batches a super_admin
+    // added to assignedBatchNumbers. No manual assignment is needed for
+    // their own batch. The null guard matters: an old account with no
+    // batch must never match another account with no batch.
+    function callerCoversBatch(n) {
+      return n != null
+        && (n == callerRecord().batchNumber
+            || n in callerRecord().assignedBatchNumbers);
+    }
+
+    // super_admin, or a batch_admin who covers the applicant's batch.
+    // A single-document get() check (used for a document `get`, never a
     // `list`), so it is safe from the "queries are all or nothing" trap.
     function callerAdminsBatchOf(applicantUid) {
       return callerIsSuperAdmin()
         || (callerIsBatchAdmin()
             && exists(/databases/$(database)/documents/users/$(applicantUid))
-            && get(/databases/$(database)/documents/users/$(applicantUid)).data.batchNumber != null
-            && get(/databases/$(database)/documents/users/$(applicantUid)).data.batchNumber
-                 in callerRecord().assignedBatchNumbers);
+            && callerCoversBatch(get(/databases/$(database)/documents/users/$(applicantUid)).data.batchNumber));
     }
 
     // Keep this ceiling in sync with CURRENT_MAX_BATCH_NUMBER in
@@ -276,8 +285,7 @@ service cloud.firestore {
           && (
             callerIsSuperAdmin()
             || (callerIsBatchAdmin()
-                && resource.data.batchNumber != null
-                && resource.data.batchNumber in callerRecord().assignedBatchNumbers)
+                && callerCoversBatch(resource.data.batchNumber))
           )
         )
         ||

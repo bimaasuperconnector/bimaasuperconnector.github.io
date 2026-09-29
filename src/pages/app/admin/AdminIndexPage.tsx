@@ -5,6 +5,7 @@ import { useUserRecord } from '../../../context/UserRecordContext';
 import {
   type UserRecord,
   type UserRole,
+  effectiveAdminBatches,
   findUserByEmail,
   setUserRole,
   setUserStatus,
@@ -239,7 +240,11 @@ function RoleManagement() {
           </p>
 
           <div className="mt-md">
-            <p className="text-label-md text-ink">Assigned batches (only used for batch_admin)</p>
+            <p className="text-label-md text-ink">Extra batches (optional — only used for batch admins)</p>
+            <p className="text-caption text-muted">
+              A batch admin can always approve applicants from their own batch automatically. Tick more only to
+              give them additional batches.
+            </p>
             <div className="mt-xs flex flex-wrap gap-xs">
               {BATCHES.map((b) => (
                 <label key={b.batchNumber} className="flex items-center gap-xxs text-body-md text-body">
@@ -265,7 +270,7 @@ function RoleManagement() {
             <Button
               variant="secondary"
               className="px-md py-xs"
-              disabled={saving || selectedBatches.length === 0}
+              disabled={saving}
               onClick={() => void apply('batch_admin')}
             >
               Set as batch admin
@@ -438,7 +443,7 @@ export function AdminIndexPage() {
     // per-document batch filter on a `list` query would fail the whole
     // query the moment a pending user outside that scope existed
     // (Firestore's "queries are all or nothing" behavior).
-    const scopeBatches = isSuperAdmin ? undefined : record?.assignedBatchNumbers;
+    const scopeBatches = isSuperAdmin ? undefined : (effectiveAdminBatches(record) ?? []);
     const unsubscribe = subscribeToPendingUsers(
       (records) => {
         setPending(records);
@@ -447,7 +452,7 @@ export function AdminIndexPage() {
       scopeBatches,
     );
     return unsubscribe;
-  }, [isSuperAdmin, record?.assignedBatchNumbers]);
+  }, [isSuperAdmin, record?.batchNumber, record?.assignedBatchNumbers]);
 
   async function handleDecision(uid: string, status: 'approved' | 'rejected') {
     setError(null);
@@ -499,16 +504,19 @@ export function AdminIndexPage() {
         <p className="copy">
           {isSuperAdmin
             ? 'Every pending sign-in across all batches.'
-            : `Pending sign-ins for your assigned batch${
-                (record?.assignedBatchNumbers.length ?? 0) === 1 ? '' : 'es'
-              }.`}
+            : `Pending sign-ins for ${(() => {
+                const list = effectiveAdminBatches(record) ?? [];
+                return list.length === 0
+                  ? 'your batch'
+                  : list.map((n) => findBatch(n)?.label ?? `BIM${n}`).join(', ');
+              })()} — your own batch is included automatically.`}
         </p>
 
-        {!isSuperAdmin && (record?.assignedBatchNumbers.length ?? 0) === 0 && (
+        {!isSuperAdmin && (effectiveAdminBatches(record) ?? []).length === 0 && (
           <div className="mt-md">
             <ErrorNote>
-              No batches are assigned to your account yet, so no applications can appear here. Ask a super admin to
-              assign your batch(es) under Roles.
+              Your account has no batch recorded (it was created before batch selection existed), so no applications
+              can appear here. Ask a super admin to add your batch under Roles.
             </ErrorNote>
           </div>
         )}
