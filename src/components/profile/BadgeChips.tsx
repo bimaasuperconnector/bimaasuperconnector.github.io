@@ -20,7 +20,7 @@ export function BadgeChips({ badges }: { badges: ProfileBadgeRef[] }) {
       {badges.map((badge) => (
         <span
           key={badge.id}
-          className={`rounded-full px-md py-xs text-caption ${
+          className={`rounded-md px-sm py-xxs text-caption ${
             SWATCH_CLASSES[badge.colorKey as BadgeColorKey] ?? SWATCH_CLASSES.ink
           }`}
         >

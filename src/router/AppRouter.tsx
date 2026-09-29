@@ -10,6 +10,7 @@ import { NotFoundPage } from '../pages/NotFoundPage';
 import { AppHomePage } from '../pages/app/AppHomePage';
 import { ProfilePage } from '../pages/app/ProfilePage';
 import { DirectoryPage } from '../pages/app/DirectoryPage';
+import { MemberProfilePage } from '../pages/app/MemberProfilePage';
 import { SuperConnectorPage } from '../pages/app/SuperConnectorPage';
 import { JobsPage } from '../pages/app/JobsPage';
 import { OpenToWorkPage } from '../pages/app/OpenToWorkPage';
@@ -42,6 +43,7 @@ export function AppRouter() {
         <Route index element={<AppHomePage />} />
         <Route path="profile" element={<ProfilePage />} />
         <Route path="directory" element={<DirectoryPage />} />
+        <Route path="directory/:uid" element={<MemberProfilePage />} />
         <Route path="superconnector" element={<SuperConnectorPage />} />
         <Route path="jobs" element={<JobsPage />} />
         <Route path="open-to-work" element={<OpenToWorkPage />} />

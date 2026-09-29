@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Button } from '../ui/Button';
+import { EmptyState, ErrorNote, SkeletonList } from '../ui/PageHeader';
 import { useAuth } from '../../context/AuthContext';
 import {
   type Badge,
@@ -73,14 +74,18 @@ export function BadgesManagement() {
   }
 
   return (
-    <div className="mt-lg rounded-md border border-hairline p-lg">
-      <h2 className="text-title-sm text-ink">Badges</h2>
-      <p className="mt-xs text-body-md text-muted">
-        Create badges members can add to their own profile (up to 5 each) — e.g. "Messcom",
-        "Finclub", "Astronomy Club".
+    <div id="badges" className="surface-card scroll-mt-20 p-lg md:p-xl">
+      <h2 className="font-haas-disp text-title-md text-ink">Badges</h2>
+      <p className="copy mt-xs">
+        Create badges members can add to their own profile (up to 5 each) — e.g. "Messcom", "Finclub", "Astronomy
+        Club".
       </p>
 
-      {error && <p className="mt-sm text-body-md text-signature-coral">{error}</p>}
+      {error && (
+        <div className="mt-sm">
+          <ErrorNote>{error}</ErrorNote>
+        </div>
+      )}
 
       <div className="mt-md flex flex-wrap items-end gap-sm">
         <div>
@@ -94,7 +99,7 @@ export function BadgesManagement() {
             onChange={(e) => setName(e.target.value)}
             maxLength={40}
             placeholder="e.g. Astronomy Club"
-            className="mt-xs block rounded-sm border border-hairline px-md py-xs text-body-md"
+            className="mt-xs block field"
           />
         </div>
         <div>
@@ -105,7 +110,7 @@ export function BadgesManagement() {
             id="badge-color"
             value={colorKey}
             onChange={(e) => setColorKey(e.target.value as BadgeColorKey)}
-            className="mt-xs block rounded-sm border border-hairline px-md py-xs text-body-md"
+            className="mt-xs block field"
           >
             {BADGE_COLOR_KEYS.map((key) => (
               <option key={key} value={key}>
@@ -126,15 +131,15 @@ export function BadgesManagement() {
 
       <div className="mt-lg">
         {loading ? (
-          <p className="text-body-md text-muted">Loading…</p>
+          <SkeletonList count={1} heightClass="h-10" />
         ) : badges.length === 0 ? (
-          <p className="text-body-md text-muted">No badges yet.</p>
+          <EmptyState title="No badges yet" />
         ) : (
           <ul className="flex flex-wrap gap-sm">
             {badges.map((badge) => (
               <li
                 key={badge.id}
-                className="flex items-center gap-xs rounded-sm border border-hairline px-md py-xs"
+                className="flex min-h-[36px] items-center gap-xs rounded-md border border-hairline px-md py-xs"
               >
                 <span className={`h-3 w-3 rounded-full ${SWATCH_CLASSES[badge.colorKey]}`} />
                 <span className="text-body-md text-ink">{badge.name}</span>

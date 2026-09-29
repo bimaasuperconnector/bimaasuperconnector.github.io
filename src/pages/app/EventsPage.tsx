@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useOwnProfile } from '../../context/OwnProfileContext';
 import { Button } from '../../components/ui/Button';
+import { EmptyState, ErrorNote, PageHeader, SkeletonList } from '../../components/ui/PageHeader';
 import { TargetingEditor } from '../../components/events/TargetingEditor';
 import { EventCard } from '../../components/events/EventCard';
-import { getProfile, type Profile } from '../../firebase/repositories/profilesRepository';
 import {
   type AlumniEvent,
   type EventFormFields,
@@ -36,10 +37,14 @@ function ReportEventControl({ eventId, reporterUid }: { eventId: string; reporte
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
 
-  if (sent) return <p className="mt-xs text-caption text-muted">Reported — thanks for flagging this.</p>;
+  if (sent) return <p className="mt-xs px-xs text-caption text-muted">Reported — thanks for flagging this.</p>;
   if (!open) {
     return (
-      <button type="button" onClick={() => setOpen(true)} className="mt-xs text-caption text-muted hover:underline">
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="mt-xxs inline-flex min-h-[36px] items-center px-xs text-caption text-muted underline-offset-2 hover:underline"
+      >
         Report this event
       </button>
     );
@@ -56,10 +61,10 @@ function ReportEventControl({ eventId, reporterUid }: { eventId: string; reporte
   }
 
   return (
-    <div className="mt-xs rounded-sm bg-surface-soft p-sm">
-      <div className="flex gap-sm">
+    <div className="mt-xs rounded-lg bg-surface-soft p-md">
+      <div className="flex flex-wrap gap-md">
         {REPORT_REASONS.map((r) => (
-          <label key={r} className="flex items-center gap-xxs text-caption text-body">
+          <label key={r} className="flex min-h-[32px] items-center gap-xs text-body-md text-body">
             <input type="radio" name={`event-reason-${eventId}`} checked={reason === r} onChange={() => setReason(r)} />
             {REPORT_REASON_LABELS[r]}
           </label>
@@ -71,13 +76,13 @@ function ReportEventControl({ eventId, reporterUid }: { eventId: string; reporte
         placeholder="Optional note for the admin"
         maxLength={500}
         rows={2}
-        className="mt-xs block w-full rounded-sm border border-hairline px-sm py-xxs text-caption"
+        className="field mt-xs block w-full"
       />
       <div className="mt-xs flex gap-sm">
-        <Button variant="secondary" className="px-sm py-xxs text-caption" onClick={() => setOpen(false)}>
+        <Button variant="secondary" className="px-md py-xs" onClick={() => setOpen(false)}>
           Cancel
         </Button>
-        <Button variant="primary" className="px-sm py-xxs text-caption" disabled={sending} onClick={() => void submit()}>
+        <Button variant="primary" className="px-md py-xs" disabled={sending} onClick={() => void submit()}>
           {sending ? 'Sending…' : 'Submit report'}
         </Button>
       </div>
@@ -159,10 +164,14 @@ function ManageEventPanel({
   }
 
   return (
-    <div className="mt-sm rounded-sm border border-hairline bg-surface-soft p-md">
-      <div className="flex items-center justify-between">
+    <div className="fade-enter mt-sm rounded-lg border border-hairline bg-surface-soft p-lg">
+      <div className="flex items-center justify-between gap-md">
         <p className="text-label-md text-ink">Manage: {event.title}</p>
-        <button type="button" onClick={onClose} className="text-caption text-muted hover:text-ink">
+        <button
+          type="button"
+          onClick={onClose}
+          className="inline-flex min-h-[44px] items-center px-xs text-body-md text-muted active:text-ink"
+        >
           Close
         </button>
       </div>
@@ -177,7 +186,7 @@ function ManageEventPanel({
           {attendees.length === 0 ? (
             <p className="mt-xs text-body-md text-muted">No RSVPs yet.</p>
           ) : (
-            <ul className="mt-xs space-y-xxs text-caption text-body">
+            <ul className="mt-xs space-y-xxs text-body-md text-body [overflow-wrap:anywhere]">
               {attendees.map((a) => (
                 <li key={a.id}>
                   {a.uid} — {a.status}
@@ -188,7 +197,7 @@ function ManageEventPanel({
         </>
       )}
       {event.status !== 'cancelled' && (
-        <div className="mt-md flex gap-sm">
+        <div className="mt-md flex flex-wrap gap-sm">
           <Button variant="secondary" className="px-md py-xs" disabled={busy} onClick={() => void handleCancel()}>
             Cancel event
           </Button>
@@ -210,7 +219,9 @@ function ManageEventPanel({
 
 export function EventsPage() {
   const { user } = useAuth();
-  const [profile, setProfile] = useState<Profile | null>(null);
+  // The member's own profile comes from the shell's single live listener —
+  // no separate read for the batch/city needed to compute event visibility.
+  const { profile, loaded: profileLoaded } = useOwnProfile();
   const [events, setEvents] = useState<AlumniEvent[]>([]);
   const [myRsvps, setMyRsvps] = useState<Record<string, EventRsvpStatus>>({});
   const [loading, setLoading] = useState(true);
@@ -227,13 +238,11 @@ export function EventsPage() {
     setLoading(true);
     setError(null);
     try {
-      const myProfile = profile ?? (await getProfile(user.uid));
-      setProfile(myProfile);
       const [visible, rsvps] = await Promise.all([
         queryVisibleEvents({
           uid: user.uid,
-          batchNumber: myProfile?.batchNumber ?? null,
-          cityCanonicalLower: myProfile?.cityCanonicalLower ?? '',
+          batchNumber: profile?.batchNumber ?? null,
+          cityCanonicalLower: profile?.cityCanonicalLower ?? '',
         }),
         listOwnRsvps(user.uid),
       ]);
@@ -250,10 +259,13 @@ export function EventsPage() {
     }
   }
 
+  // Waits for the own-profile listener's first snapshot so the targeted
+  // queries use the member's real batch/city (and run once, not twice).
   useEffect(() => {
+    if (!profileLoaded) return;
     void loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  }, [user, profileLoaded]);
 
   async function handleCreate() {
     if (!user) return;
@@ -304,105 +316,154 @@ export function EventsPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between">
-        <h1 className="text-title-lg text-ink">Events</h1>
-        <Button variant="primary" onClick={() => setShowForm((s) => !s)}>
-          {showForm ? 'Cancel' : 'Create event'}
-        </Button>
-      </div>
-      <p className="mt-sm text-body-md text-body">
-        Alumni meetups, virtual or in person. RSVP below, or organize your own for everyone, a batch, a
-        city, or a hand-picked list of people.
-      </p>
+      <PageHeader
+        title="Events"
+        description="Alumni meetups, virtual or in person. RSVP below, or organize your own for everyone, a batch, a city, or a hand-picked list of people."
+        actions={
+          <Button variant="primary" onClick={() => setShowForm((s) => !s)} aria-expanded={showForm}>
+            {showForm ? 'Cancel' : 'Create event'}
+          </Button>
+        }
+      />
 
-      {error && <p className="mt-md text-body-md text-signature-coral">{error}</p>}
+      {error && (
+        <div className="mt-md">
+          <ErrorNote>{error}</ErrorNote>
+        </div>
+      )}
 
       {showForm && (
-        <div className="mt-lg rounded-md border border-hairline p-xl">
-          <div className="grid gap-md md:grid-cols-2">
-            <input
-              placeholder="Event title"
-              value={form.title}
-              onChange={(e) => setForm({ ...form, title: e.target.value })}
-              className="rounded-sm border border-hairline px-md py-xs text-body-md"
-            />
-            <select
-              value={form.format}
-              onChange={(e) => setForm({ ...form, format: e.target.value as EventFormFields['format'] })}
-              className="rounded-sm border border-hairline px-md py-xs text-body-md"
-            >
-              <option value="virtual">Virtual</option>
-              <option value="physical">In person</option>
-            </select>
+        <div className="fade-enter surface-card mt-lg p-lg md:p-xl">
+          <h2 className="font-haas-disp text-title-md text-ink">New event</h2>
+          <div className="mt-md grid gap-md md:grid-cols-2">
+            <div>
+              <label className="text-label-md text-ink" htmlFor="event-title">
+                Event title
+              </label>
+              <input
+                id="event-title"
+                placeholder="Event title"
+                value={form.title}
+                onChange={(e) => setForm({ ...form, title: e.target.value })}
+                className="field mt-xxs block w-full"
+              />
+            </div>
+            <div>
+              <label className="text-label-md text-ink" htmlFor="event-format">
+                Format
+              </label>
+              <select
+                id="event-format"
+                value={form.format}
+                onChange={(e) => setForm({ ...form, format: e.target.value as EventFormFields['format'] })}
+                className="field mt-xxs block w-full"
+              >
+                <option value="virtual">Virtual</option>
+                <option value="physical">In person</option>
+              </select>
+            </div>
           </div>
 
-          {form.format === 'physical' ? (
-            <input
-              placeholder="Location"
-              value={form.location}
-              onChange={(e) => setForm({ ...form, location: e.target.value })}
-              className="mt-md block w-full rounded-sm border border-hairline px-md py-xs text-body-md"
-            />
-          ) : (
-            <input
-              placeholder="Note for attendees (e.g. link shared closer to the date)"
-              value={form.virtualNote}
-              onChange={(e) => setForm({ ...form, virtualNote: e.target.value })}
-              maxLength={300}
-              className="mt-md block w-full rounded-sm border border-hairline px-md py-xs text-body-md"
-            />
-          )}
+          <div className="mt-md">
+            {form.format === 'physical' ? (
+              <>
+                <label className="text-label-md text-ink" htmlFor="event-location">
+                  Location
+                </label>
+                <input
+                  id="event-location"
+                  placeholder="Location"
+                  value={form.location}
+                  onChange={(e) => setForm({ ...form, location: e.target.value })}
+                  className="field mt-xxs block w-full"
+                />
+              </>
+            ) : (
+              <>
+                <label className="text-label-md text-ink" htmlFor="event-note">
+                  Note for attendees
+                </label>
+                <input
+                  id="event-note"
+                  placeholder="e.g. link shared closer to the date"
+                  value={form.virtualNote}
+                  onChange={(e) => setForm({ ...form, virtualNote: e.target.value })}
+                  maxLength={300}
+                  className="field mt-xxs block w-full"
+                />
+              </>
+            )}
+          </div>
 
-          <textarea
-            placeholder="Description"
-            value={form.description}
-            onChange={(e) => setForm({ ...form, description: e.target.value })}
-            rows={3}
-            maxLength={3000}
-            className="mt-md block w-full rounded-sm border border-hairline px-md py-xs text-body-md"
-          />
+          <div className="mt-md">
+            <label className="text-label-md text-ink" htmlFor="event-description">
+              Description
+            </label>
+            <textarea
+              id="event-description"
+              placeholder="What is this event about?"
+              value={form.description}
+              onChange={(e) => setForm({ ...form, description: e.target.value })}
+              rows={3}
+              maxLength={3000}
+              className="field mt-xxs block w-full"
+            />
+          </div>
 
           <div className="mt-md grid gap-md md:grid-cols-2">
             <div>
-              <label className="text-body-md text-body">Starts</label>
+              <label className="text-label-md text-ink" htmlFor="event-start">
+                Starts
+              </label>
               <input
+                id="event-start"
                 type="datetime-local"
                 value={toLocalInputValue(form.startTime)}
                 onChange={(e) => setForm({ ...form, startTime: new Date(e.target.value) })}
-                className="mt-xs block w-full rounded-sm border border-hairline px-md py-xs text-body-md"
+                className="field mt-xxs block w-full"
               />
             </div>
             <div>
-              <label className="text-body-md text-body">Ends</label>
+              <label className="text-label-md text-ink" htmlFor="event-end">
+                Ends
+              </label>
               <input
+                id="event-end"
                 type="datetime-local"
                 value={toLocalInputValue(form.endTime)}
                 onChange={(e) => setForm({ ...form, endTime: new Date(e.target.value) })}
-                className="mt-xs block w-full rounded-sm border border-hairline px-md py-xs text-body-md"
+                className="field mt-xxs block w-full"
               />
             </div>
           </div>
 
           <div className="mt-md grid gap-md md:grid-cols-2">
             <div>
-              <label className="text-body-md text-body">RSVP deadline (optional)</label>
+              <label className="text-label-md text-ink" htmlFor="event-deadline">
+                RSVP deadline <span className="font-normal text-muted">(optional)</span>
+              </label>
               <input
+                id="event-deadline"
                 type="datetime-local"
                 value={form.rsvpDeadline ? toLocalInputValue(form.rsvpDeadline) : ''}
                 onChange={(e) => setForm({ ...form, rsvpDeadline: e.target.value ? new Date(e.target.value) : null })}
-                className="mt-xs block w-full rounded-sm border border-hairline px-md py-xs text-body-md"
+                className="field mt-xxs block w-full"
               />
             </div>
             <div>
-              <label className="text-body-md text-body">Capacity (optional)</label>
+              <label className="text-label-md text-ink" htmlFor="event-capacity">
+                Capacity <span className="font-normal text-muted">(optional)</span>
+              </label>
               <input
+                id="event-capacity"
                 type="number"
                 min={1}
                 max={1000}
+                inputMode="numeric"
                 value={form.capacity ?? ''}
                 onChange={(e) => setForm({ ...form, capacity: e.target.value ? Number(e.target.value) : null })}
                 placeholder="Unlimited"
-                className="mt-xs block w-full rounded-sm border border-hairline px-md py-xs text-body-md"
+                className="field mt-xxs block w-full"
               />
             </div>
           </div>
@@ -418,9 +479,11 @@ export function EventsPage() {
       )}
 
       {myOrganizedEvents.length > 0 && (
-        <div className="mt-xl">
-          <h2 className="text-title-sm text-ink">Your events</h2>
-          <div className="mt-md space-y-md">
+        <section className="mt-xl" aria-labelledby="your-events">
+          <h2 id="your-events" className="font-haas-disp text-title-md text-ink">
+            Your events
+          </h2>
+          <div className="mt-md space-y-lg">
             {myOrganizedEvents.map((event) => (
               <div key={event.id}>
                 <EventCard
@@ -444,31 +507,37 @@ export function EventsPage() {
               </div>
             ))}
           </div>
-        </div>
+        </section>
       )}
 
-      <div className="mt-xl">
-        <h2 className="text-title-sm text-ink">Upcoming</h2>
-        {loading ? (
-          <p className="mt-md text-body-md text-muted">Loading…</p>
-        ) : otherUpcomingEvents.length === 0 ? (
-          <p className="mt-md text-body-md text-muted">No upcoming events right now.</p>
-        ) : (
-          <div className="mt-md space-y-md">
-            {otherUpcomingEvents.map((event) => (
-              <div key={event.id}>
-                <EventCard
-                  event={event}
-                  myRsvpStatus={myRsvps[event.id] ?? null}
-                  onRespond={(status) => handleRespond(event, status)}
-                  onWithdraw={() => handleWithdraw(event.id)}
-                />
-                {user && <ReportEventControl eventId={event.id} reporterUid={user.uid} />}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      <section className="mt-xl" aria-labelledby="upcoming-events">
+        <h2 id="upcoming-events" className="font-haas-disp text-title-md text-ink">
+          Upcoming
+        </h2>
+        <div className="mt-md">
+          {loading ? (
+            <SkeletonList count={2} heightClass="h-[260px]" />
+          ) : otherUpcomingEvents.length === 0 ? (
+            <EmptyState title="No upcoming events right now">
+              Organize one for everyone, a batch or a city — it takes a minute.
+            </EmptyState>
+          ) : (
+            <div className="space-y-lg">
+              {otherUpcomingEvents.map((event) => (
+                <div key={event.id}>
+                  <EventCard
+                    event={event}
+                    myRsvpStatus={myRsvps[event.id] ?? null}
+                    onRespond={(status) => handleRespond(event, status)}
+                    onWithdraw={() => handleWithdraw(event.id)}
+                  />
+                  {user && <ReportEventControl eventId={event.id} reporterUid={user.uid} />}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
     </div>
   );
 }

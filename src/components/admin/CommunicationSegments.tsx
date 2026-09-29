@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Button } from '../ui/Button';
+import { EmptyState, SkeletonList } from '../ui/PageHeader';
 import { allBatches } from '../../lib/batches';
 import { useAuth } from '../../context/AuthContext';
 import { findUserByEmail } from '../../firebase/repositories/usersRepository';
@@ -91,7 +92,7 @@ function NewSegmentForm({ onCreated }: { onCreated: () => void }) {
     (type !== 'customUids' || customUids.length > 0);
 
   return (
-    <div className="mt-lg rounded-sm border border-hairline p-md">
+    <div className="mt-lg rounded-lg border border-hairline p-md">
       <p className="text-label-md text-ink">New segment</p>
       <div className="mt-sm grid gap-sm md:grid-cols-2">
         <input
@@ -99,12 +100,12 @@ function NewSegmentForm({ onCreated }: { onCreated: () => void }) {
           placeholder='Segment name (e.g. "Bengaluru alumni")'
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="rounded-sm border border-hairline px-md py-xs text-body-md"
+          className="field"
         />
         <select
           value={type}
           onChange={(e) => setType(e.target.value as SegmentType)}
-          className="rounded-sm border border-hairline px-md py-xs text-body-md"
+          className="field"
         >
           {SEGMENT_TYPES.map((t) => (
             <option key={t} value={t}>
@@ -118,7 +119,7 @@ function NewSegmentForm({ onCreated }: { onCreated: () => void }) {
         <select
           value={batchNumber ?? ''}
           onChange={(e) => setBatchNumber(e.target.value ? Number(e.target.value) : null)}
-          className="mt-sm rounded-sm border border-hairline px-md py-xs text-body-md"
+          className="mt-sm field"
         >
           <option value="">Choose a batch…</option>
           {BATCHES.map((b) => (
@@ -135,7 +136,7 @@ function NewSegmentForm({ onCreated }: { onCreated: () => void }) {
           placeholder="e.g. Bengaluru"
           value={city}
           onChange={(e) => setCity(e.target.value)}
-          className="mt-sm block w-full max-w-[320px] rounded-sm border border-hairline px-md py-xs text-body-md"
+          className="mt-sm block w-full max-w-[320px] field"
         />
       )}
 
@@ -147,7 +148,7 @@ function NewSegmentForm({ onCreated }: { onCreated: () => void }) {
               placeholder="member@example.com"
               value={emailDraft}
               onChange={(e) => setEmailDraft(e.target.value)}
-              className="flex-1 rounded-sm border border-hairline px-md py-xs text-body-md"
+              className="flex-1 field"
             />
             <Button variant="secondary" className="px-md py-xs" disabled={!emailDraft.trim()} onClick={() => void addPerson()}>
               Add
@@ -199,7 +200,7 @@ function SegmentRow({ segment, onDeleted }: { segment: CommunicationSegment; onD
   }
 
   return (
-    <li className="rounded-sm border border-hairline p-md">
+    <li className="rounded-lg border border-hairline p-md">
       <div className="flex items-center justify-between gap-md">
         <div>
           <p className="text-label-md text-ink">{segment.name}</p>
@@ -271,23 +272,27 @@ export function CommunicationSegments() {
   }, []);
 
   return (
-    <div className="mt-lg rounded-md border border-hairline p-xl">
-      <h1 className="text-title-lg text-ink">Communication segments</h1>
-      <p className="mt-sm text-body-md text-body">
-        Define a named group of members (a batch, a city, Open to Work, founders, or a hand-picked
-        list), then resolve it whenever you actually need to reach out to see who's in it today and
-        export their names and emails as a CSV.
+    <section id="segments" className="surface-card scroll-mt-20 p-lg md:p-xl">
+      <h2 className="font-haas-disp text-title-md text-ink">Communication segments</h2>
+      <p className="copy mt-xs">
+        Define a named group of members (a batch, a city, Open to Work, founders, or a hand-picked list), then
+        resolve it whenever you actually need to reach out to see who's in it today and export their names and
+        emails as a CSV.
       </p>
       <p className="mt-xs text-caption text-muted">
-        This account isn't on Google Workspace, so there's no automatic Google Groups sync — paste
-        the exported emails into a BCC field or a Group you manage by hand. Keep an eye on Gmail's
-        own sending limits for anything close to the full membership (see AUTOMATION.md).
+        This account isn't on Google Workspace, so there's no automatic Google Groups sync — paste the exported
+        emails into a BCC field or a Group you manage by hand. Keep an eye on Gmail's own sending limits for
+        anything close to the full membership (see AUTOMATION.md).
       </p>
 
       {loading ? (
-        <p className="mt-lg text-body-md text-muted">Loading…</p>
+        <div className="mt-lg">
+          <SkeletonList count={2} heightClass="h-16" />
+        </div>
       ) : segments.length === 0 ? (
-        <p className="mt-lg text-body-md text-muted">No segments saved yet.</p>
+        <div className="mt-lg">
+          <EmptyState title="No segments saved yet" />
+        </div>
       ) : (
         <ul className="mt-lg space-y-md">
           {segments.map((s) => (
@@ -296,7 +301,9 @@ export function CommunicationSegments() {
         </ul>
       )}
 
-      <NewSegmentForm onCreated={() => void refresh()} />
-    </div>
+      <div className="mt-lg border-t border-hairline pt-lg">
+        <NewSegmentForm onCreated={() => void refresh()} />
+      </div>
+    </section>
   );
 }

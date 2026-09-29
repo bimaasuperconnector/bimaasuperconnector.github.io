@@ -66,12 +66,165 @@
     animation: sc-rise 0.6s ease-out both;
   }
 
+  /* ------------------------------------------------------------------
+     Signed-in app primitives (post-login UI revamp). Everything below is
+     built from the existing Design-superconnector.md tokens only: white
+     canvas, ink type, hairline borders, 12px/10px/6px radii, signature
+     colour blocks. No new colours, no gradients.
+     ------------------------------------------------------------------ */
+
+  /* Text inputs / selects / textareas: 44px touch target, 6px radius,
+     hairline border, info-blue focus ring. 16px on phones so iOS Safari
+     doesn't zoom the page when a field is focused. */
+  .field {
+    @apply rounded-sm border border-hairline bg-canvas px-md py-sm text-body-md text-ink transition-colors duration-150 placeholder:text-muted;
+    min-height: 44px;
+  }
+  .field:focus {
+    @apply border-info-border outline-none ring-2 ring-info-border/25;
+  }
+  .field:disabled {
+    @apply cursor-not-allowed bg-surface-soft opacity-60;
+  }
+  @media (max-width: 767px) {
+    .field {
+      font-size: 16px;
+    }
+  }
+
+  /* Content surfaces */
+  .surface-card {
+    @apply rounded-lg border border-hairline bg-canvas;
+  }
+  .surface-soft-card {
+    @apply rounded-lg bg-surface-soft;
+  }
+
+  /* Running copy: the design file's 14px body size with a comfortable
+     reading line-height for multi-line paragraphs (bios, descriptions). */
+  .copy {
+    @apply text-body-md text-body;
+    line-height: 1.55;
+  }
+
+  /* Small label chips (Founder, Open to Work, status…) */
+  .chip {
+    @apply inline-flex items-center gap-xxs rounded-sm px-xs py-xxs text-caption text-ink;
+  }
+
+  /* Filter / mode tabs: 10px radius (the pill radius is reserved for the
+     pricing sub-system by the design file). */
+  .tab-chip {
+    @apply inline-flex min-h-[36px] items-center rounded-md border border-hairline bg-canvas px-md text-body-md text-body transition-colors duration-150;
+  }
+  .tab-chip[aria-pressed='true'],
+  .tab-chip[aria-selected='true'] {
+    @apply border-primary bg-primary text-on-primary;
+  }
+
+  /* Round icon buttons in the header (44px hit area, 40px look) */
+  .icon-btn {
+    @apply relative inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-ink transition-colors duration-150 active:bg-surface-strong;
+  }
+  .icon-btn:hover {
+    @apply bg-surface-soft;
+  }
+
+  /* Loading skeletons */
+  @keyframes sc-shimmer {
+    from {
+      background-position: 200% 0;
+    }
+    to {
+      background-position: -200% 0;
+    }
+  }
+  .skeleton {
+    @apply rounded-md;
+    background: linear-gradient(90deg, #f1f3f6 25%, #e6e9ee 37%, #f1f3f6 63%);
+    background-size: 400% 100%;
+    animation: sc-shimmer 1.6s ease-in-out infinite;
+  }
+
+  /* Route change + popover motion (all neutralised by the reduced-motion
+     rules below). */
+  @keyframes sc-page-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  .page-enter {
+    animation: sc-page-in 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  @keyframes sc-pop-in {
+    from {
+      opacity: 0;
+      transform: translateY(-4px) scale(0.98);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  .pop-enter {
+    animation: sc-pop-in 0.16s ease-out both;
+    transform-origin: top right;
+  }
+  @keyframes sc-slide-up {
+    from {
+      transform: translateY(24px);
+      opacity: 0;
+    }
+    to {
+      transform: none;
+      opacity: 1;
+    }
+  }
+  .sheet-enter {
+    animation: sc-slide-up 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  @keyframes sc-fade {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  .fade-enter {
+    animation: sc-fade 0.2s ease-out both;
+  }
+
   /* Reduced motion: no animation at all. (The global rule above only
      shortens durations — the staggered animation-delay would still leave
      the stages invisible for up to 0.6s.) */
   @media (prefers-reduced-motion: reduce) {
-    .sc-rise {
+    .sc-rise,
+    .page-enter,
+    .pop-enter,
+    .sheet-enter,
+    .fade-enter,
+    .skeleton {
       animation: none;
     }
+  }
+}
+
+/* Keeps content clear of the iPhone home indicator / Android gesture bar
+   when the installed PWA runs edge-to-edge. */
+@layer utilities {
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
   }
 }

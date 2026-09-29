@@ -1,17 +1,61 @@
-import { LinkButton } from '../ui/Button';
+import type { ReactNode } from 'react';
+import {
+  LinkedInIcon,
+  MailIcon,
+  PhoneIcon,
+  WhatsAppIcon,
+} from '../icons/NavIcons';
 import type { ContactVisibleMap } from '../../firebase/repositories/profilesRepository';
 
 /**
- * Renders a row of contact buttons for whichever channels the profile
- * owner has chosen to reveal (see profilesRepository.ts'
- * `ContactVisibleMap` / profileContactsRepository.ts). Deliberately
- * button-style, not plain visible text/links — per the explicit product
- * requirement, a raw phone number is never printed on screen; clicking
- * "WhatsApp" or "Call" opens the relevant app directly via a `wa.me`/
- * `tel:` deep link instead. Renders nothing if the owner hasn't
- * revealed any channel.
+ * Renders the contact channels a profile owner has chosen to reveal (see
+ * profilesRepository.ts' `ContactVisibleMap` / profileContactsRepository.ts)
+ * as recognisable icon buttons — email, LinkedIn, call, WhatsApp — instead
+ * of text labels. Only channels that are actually available are rendered,
+ * and nothing at all if none are.
+ *
+ * Behaviour is unchanged from the text-button version: a raw phone number
+ * or address is never printed on screen; tapping an icon opens the relevant
+ * app through a `mailto:` / `tel:` / `wa.me` / LinkedIn deep link. Each icon
+ * has an accessible name ("Email Priya", "Call Priya"…) and a matching
+ * tooltip, and a 44px hit area.
  */
-export function ContactButtons({ contact }: { contact: ContactVisibleMap | undefined }) {
+function ContactIcon({
+  href,
+  label,
+  external,
+  tone,
+  children,
+}: {
+  href: string;
+  label: string;
+  external?: boolean;
+  tone: string;
+  children: ReactNode;
+}) {
+  return (
+    <a
+      href={href}
+      aria-label={label}
+      title={label}
+      {...(external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+      className={`inline-flex h-11 w-11 items-center justify-center rounded-lg border border-hairline bg-canvas transition-colors duration-150 hover:border-border-strong hover:bg-surface-soft active:bg-surface-strong ${tone}`}
+    >
+      {children}
+    </a>
+  );
+}
+
+export function ContactButtons({
+  contact,
+  name,
+  className = 'mt-sm',
+}: {
+  contact: ContactVisibleMap | undefined;
+  /** Used only for accessible labels, e.g. "Email Priya". */
+  name?: string;
+  className?: string;
+}) {
   if (!contact) return null;
 
   const whatsappDigits = contact.whatsapp ? contact.whatsapp.replace(/[^0-9]/g, '') : '';
@@ -24,43 +68,29 @@ export function ContactButtons({ contact }: { contact: ContactVisibleMap | undef
   const hasAny = Boolean(whatsappDigits || contact.phone || contact.email || linkedinHref);
   if (!hasAny) return null;
 
+  const who = name ? ` ${name}` : '';
+
   return (
-    <div className="mt-sm flex flex-wrap gap-xs">
-      {whatsappDigits && (
-        <LinkButton
-          href={`https://wa.me/${whatsappDigits}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          variant="secondary"
-          className="px-sm py-xxs text-body-md"
-        >
-          WhatsApp
-        </LinkButton>
-      )}
-      {contact.phone && (
-        <LinkButton href={`tel:${contact.phone}`} variant="secondary" className="px-sm py-xxs text-body-md">
-          Call
-        </LinkButton>
-      )}
+    <div className={`flex flex-wrap gap-sm ${className}`} role="group" aria-label="Contact options">
       {contact.email && (
-        <LinkButton
-          href={`mailto:${contact.email}`}
-          variant="secondary"
-          className="px-sm py-xxs text-body-md"
-        >
-          Email
-        </LinkButton>
+        <ContactIcon href={`mailto:${contact.email}`} label={`Email${who}`} tone="text-ink">
+          <MailIcon />
+        </ContactIcon>
       )}
       {linkedinHref && (
-        <LinkButton
-          href={linkedinHref}
-          target="_blank"
-          rel="noopener noreferrer"
-          variant="secondary"
-          className="px-sm py-xxs text-body-md"
-        >
-          LinkedIn
-        </LinkButton>
+        <ContactIcon href={linkedinHref} label={`LinkedIn${who ? ` profile of${who}` : ''}`} external tone="text-link">
+          <LinkedInIcon />
+        </ContactIcon>
+      )}
+      {contact.phone && (
+        <ContactIcon href={`tel:${contact.phone}`} label={`Call${who}`} tone="text-ink">
+          <PhoneIcon />
+        </ContactIcon>
+      )}
+      {whatsappDigits && (
+        <ContactIcon href={`https://wa.me/${whatsappDigits}`} label={`WhatsApp${who}`} external tone="text-success">
+          <WhatsAppIcon />
+        </ContactIcon>
       )}
     </div>
   );

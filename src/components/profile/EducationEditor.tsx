@@ -45,28 +45,28 @@ export function EducationEditor({ education, onChange }: EducationEditorProps) {
           <p className="text-body-md text-muted">No education added yet.</p>
         )}
         {education.map((entry, index) => (
-          <div key={index} className="rounded-sm border border-hairline p-md">
+          <div key={index} className="surface-card p-md">
             <div className="grid gap-sm md:grid-cols-2">
               <input
                 type="text"
                 placeholder="Institution"
                 value={entry.institution}
                 onChange={(e) => updateAt(index, { institution: e.target.value })}
-                className="rounded-sm border border-hairline px-md py-xs text-body-md"
+                className="field"
               />
               <input
                 type="text"
                 placeholder="Degree"
                 value={entry.degree}
                 onChange={(e) => updateAt(index, { degree: e.target.value })}
-                className="rounded-sm border border-hairline px-md py-xs text-body-md"
+                className="field"
               />
               <input
                 type="text"
                 placeholder="Field of study"
                 value={entry.field}
                 onChange={(e) => updateAt(index, { field: e.target.value })}
-                className="rounded-sm border border-hairline px-md py-xs text-body-md"
+                className="field"
               />
               <input
                 type="number"
@@ -75,14 +75,14 @@ export function EducationEditor({ education, onChange }: EducationEditorProps) {
                 onChange={(e) =>
                   updateAt(index, { endYear: e.target.value ? Number(e.target.value) : null })
                 }
-                className="rounded-sm border border-hairline px-md py-xs text-body-md"
+                className="field"
               />
             </div>
             <div className="mt-sm text-right">
               <button
                 type="button"
                 onClick={() => removeAt(index)}
-                className="text-body-md text-signature-coral hover:underline"
+                className="inline-flex min-h-[36px] items-center text-body-md text-signature-coral hover:underline"
               >
                 Remove
               </button>

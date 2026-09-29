@@ -1,7 +1,9 @@
+import { Link } from 'react-router-dom';
 import type { OrganizationEntry, Profile } from '../../firebase/repositories/profilesRepository';
 import { findBatch } from '../../lib/batches';
 import { Avatar } from '../ui/Avatar';
 import { ContactButtons } from '../directory/ContactButtons';
+import { useAuth } from '../../context/AuthContext';
 
 /**
  * Phase 12 (Entrepreneurship & organization history). Renders one
@@ -21,39 +23,45 @@ export function VentureCard({
   profile: Profile;
   organization: OrganizationEntry;
 }) {
+  const { user } = useAuth();
   const batch = profile.batchNumber !== null ? findBatch(profile.batchNumber) : undefined;
   const isActive = organization.endYear === null;
+  const to = profile.uid === user?.uid ? '/app/profile' : `/app/directory/${profile.uid}`;
 
   return (
-    <div className="rounded-md border border-hairline p-md">
+    <article className="surface-card flex h-full flex-col p-lg">
       <div className="flex items-start justify-between gap-sm">
-        <p className="text-label-md text-ink">{organization.name || 'Unnamed venture'}</p>
-        <span
-          className={`shrink-0 rounded-sm px-xs py-xxs text-caption text-ink ${
-            isActive ? 'bg-signature-mint' : 'bg-surface-strong'
-          }`}
-        >
+        <h3 className="font-haas-disp text-title-sm font-medium text-ink">
+          {organization.name || 'Unnamed venture'}
+        </h3>
+        <span className={`chip shrink-0 ${isActive ? 'bg-signature-mint' : 'bg-surface-strong'}`}>
           {isActive ? 'Active' : 'Past venture'}
         </span>
       </div>
 
-      {organization.title && <p className="mt-xs text-body-md text-muted">{organization.title}</p>}
+      {organization.title && <p className="mt-xxs text-body-md text-body">{organization.title}</p>}
 
       {organization.startYear && (
-        <p className="mt-xs text-body-md text-muted">
+        <p className="mt-xxs text-body-md text-muted">
           {organization.startYear}–{organization.endYear ?? 'present'}
         </p>
       )}
 
-      <div className="mt-md flex items-center gap-sm border-t border-hairline pt-md">
-        <Avatar src={profile.photoURL} sizeClass="h-8 w-8" />
+      <Link
+        to={to}
+        state={{ profile }}
+        className="mt-lg flex items-center gap-sm rounded-lg border-t border-hairline pt-md transition-colors duration-150 hover:opacity-80"
+      >
+        <Avatar src={profile.photoURL} sizeClass="h-9 w-9" />
         <div className="min-w-0">
-          <p className="truncate text-body-md text-ink">{profile.displayName || 'Unnamed alum'}</p>
+          <p className="truncate text-label-md text-ink">{profile.displayName || 'Unnamed alum'}</p>
           {batch && <p className="text-caption text-muted">{batch.label}</p>}
         </div>
-      </div>
+      </Link>
 
-      <ContactButtons contact={profile.contactVisible} />
-    </div>
+      <div className="mt-auto">
+        <ContactButtons contact={profile.contactVisible} name={profile.displayName.split(' ')[0] || undefined} className="mt-md" />
+      </div>
+    </article>
   );
 }

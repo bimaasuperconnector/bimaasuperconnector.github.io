@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import type { QueryDocumentSnapshot, DocumentData } from 'firebase/firestore';
 import { useAuth } from '../../context/AuthContext';
 import { Button } from '../../components/ui/Button';
+import { EmptyState, ErrorNote, PageHeader, SkeletonList } from '../../components/ui/PageHeader';
+import { ClockIcon, MapPinIcon } from '../../components/icons/NavIcons';
 import { TagInput } from '../../components/profile/TagInput';
 import {
   type EmploymentType,
@@ -56,7 +58,7 @@ function ReportJobControl({ jobId, reporterUid }: { jobId: string; reporterUid: 
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="mt-sm text-caption text-muted hover:underline"
+        className="mt-xs inline-flex min-h-[36px] items-center text-caption text-muted underline-offset-2 hover:underline"
       >
         Report this posting
       </button>
@@ -74,10 +76,10 @@ function ReportJobControl({ jobId, reporterUid }: { jobId: string; reporterUid: 
   }
 
   return (
-    <div className="mt-sm rounded-sm bg-surface-soft p-sm">
-      <div className="flex gap-sm">
+    <div className="mt-sm rounded-lg bg-surface-soft p-md">
+      <div className="flex flex-wrap gap-md">
         {REPORT_REASONS.map((r) => (
-          <label key={r} className="flex items-center gap-xxs text-caption text-body">
+          <label key={r} className="flex min-h-[32px] items-center gap-xs text-body-md text-body">
             <input type="radio" name={`reason-${jobId}`} checked={reason === r} onChange={() => setReason(r)} />
             {REPORT_REASON_LABELS[r]}
           </label>
@@ -89,13 +91,13 @@ function ReportJobControl({ jobId, reporterUid }: { jobId: string; reporterUid: 
         placeholder="Optional note for the admin"
         maxLength={500}
         rows={2}
-        className="mt-xs block w-full rounded-sm border border-hairline px-sm py-xxs text-caption"
+        className="mt-xs block w-full field"
       />
       <div className="mt-xs flex gap-sm">
-        <Button variant="secondary" className="px-sm py-xxs text-caption" onClick={() => setOpen(false)}>
+        <Button variant="secondary" className="px-md py-xs" onClick={() => setOpen(false)}>
           Cancel
         </Button>
-        <Button variant="primary" className="px-sm py-xxs text-caption" disabled={sending} onClick={() => void submit()}>
+        <Button variant="primary" className="px-md py-xs" disabled={sending} onClick={() => void submit()}>
           {sending ? 'Sending…' : 'Submit report'}
         </Button>
       </div>
@@ -113,47 +115,67 @@ function JobCard({
   reporterUid?: string;
 }) {
   return (
-    <div className="rounded-md border border-hairline p-md">
+    <article className="surface-card p-lg">
       <div className="flex items-start justify-between gap-md">
-        <div>
-          <p className="text-label-md text-ink">{job.title}</p>
-          <p className="text-body-md text-muted">
-            {job.company} · {job.location} · {EMPLOYMENT_TYPE_LABELS[job.employmentType]}
-          </p>
+        <div className="min-w-0">
+          <h3 className="font-haas-disp text-title-md text-ink">{job.title}</h3>
+          <p className="mt-xxs text-body-md text-body">{job.company}</p>
         </div>
-        {job.urgency === 'urgent' && (
-          <span className="shrink-0 rounded-sm bg-signature-coral px-xs py-xxs text-caption text-on-primary">
-            Urgent
-          </span>
-        )}
+        {job.urgency === 'urgent' && <span className="chip shrink-0 bg-signature-coral text-on-primary">Urgent</span>}
       </div>
-      <p className="mt-sm text-body-md text-body">{job.description}</p>
+
+      <p className="mt-sm flex flex-wrap items-center gap-x-md gap-y-xxs text-body-md text-muted">
+        <span className="flex items-center gap-xxs">
+          <MapPinIcon width={14} height={14} /> {job.location}
+        </span>
+        <span>{EMPLOYMENT_TYPE_LABELS[job.employmentType]}</span>
+        {job.experienceLevel && <span>{job.experienceLevel}</span>}
+      </p>
+
+      <p className="copy mt-md whitespace-pre-line">{job.description}</p>
+
       {job.skills.length > 0 && (
-        <p className="mt-sm text-body-md text-muted">{job.skills.join(', ')}</p>
+        <ul className="mt-md flex flex-wrap gap-xs">
+          {job.skills.map((skill) => (
+            <li key={skill} className="rounded-md border border-hairline bg-surface-soft px-sm py-xxs text-body-md text-ink">
+              {skill}
+            </li>
+          ))}
+        </ul>
       )}
-      {job.experienceLevel && <p className="mt-xs text-body-md text-muted">{job.experienceLevel}</p>}
-      <div className="mt-sm text-body-md text-body">
-        <p>Apply: {job.applicationMethod}</p>
-        <p className="text-muted">
-          Contact: {job.contactPerson} · {job.contactDetails}
+
+      <div className="mt-md rounded-lg bg-surface-soft p-md text-body-md text-body [overflow-wrap:anywhere]">
+        <p>
+          <span className="text-muted">Apply: </span>
+          {job.applicationMethod}
+        </p>
+        <p className="mt-xxs">
+          <span className="text-muted">Contact: </span>
+          {job.contactPerson} · {job.contactDetails}
         </p>
       </div>
-      <p className="mt-xs text-caption text-muted">
-        Posted by {job.postedByDisplayName} · Expires{' '}
-        {job.expirationDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-        {job.status !== 'approved' && ` · ${job.status}`}
+
+      <p className="mt-md flex flex-wrap items-center gap-x-sm gap-y-xxs text-caption text-muted">
+        <span>Posted by {job.postedByDisplayName}</span>
+        <span className="flex items-center gap-xxs">
+          <ClockIcon width={13} height={13} />
+          Expires{' '}
+          {job.expirationDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+        </span>
+        {job.status !== 'approved' && <span className="chip bg-signature-yellow">{job.status}</span>}
       </p>
+
       {onWithdraw && (
         <button
           type="button"
           onClick={onWithdraw}
-          className="mt-sm text-body-md text-signature-coral hover:underline"
+          className="mt-xs inline-flex min-h-[44px] items-center text-body-md text-signature-coral active:opacity-70"
         >
           Withdraw
         </button>
       )}
       {reporterUid && <ReportJobControl jobId={job.id} reporterUid={reporterUid} />}
-    </div>
+    </article>
   );
 }
 
@@ -242,43 +264,47 @@ export function JobsPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between">
-        <h1 className="text-title-lg text-ink">Jobs</h1>
-        <Button variant="primary" onClick={() => setShowForm((s) => !s)}>
-          {showForm ? 'Cancel' : 'Post a job'}
-        </Button>
-      </div>
-      <p className="mt-sm text-body-md text-body">
-        Roles shared by fellow alumni. New postings are reviewed by an admin before appearing here.
-      </p>
+      <PageHeader
+        title="Jobs"
+        description="Roles shared by fellow alumni. New postings are reviewed by an admin before appearing here."
+        actions={
+          <Button variant="primary" onClick={() => setShowForm((s) => !s)} aria-expanded={showForm}>
+            {showForm ? 'Cancel' : 'Post a job'}
+          </Button>
+        }
+      />
 
-      {error && <p className="mt-md text-body-md text-signature-coral">{error}</p>}
+      {error && (
+        <div className="mt-md">
+          <ErrorNote>{error}</ErrorNote>
+        </div>
+      )}
 
       {showForm && (
-        <div className="mt-lg rounded-md border border-hairline p-xl">
+        <div className="fade-enter surface-card mt-lg p-lg md:p-xl">
           <div className="grid gap-md md:grid-cols-2">
             <input
               placeholder="Company"
               value={form.company}
               onChange={(e) => setForm({ ...form, company: e.target.value })}
-              className="rounded-sm border border-hairline px-md py-xs text-body-md"
+              className="field"
             />
             <input
               placeholder="Job title"
               value={form.title}
               onChange={(e) => setForm({ ...form, title: e.target.value })}
-              className="rounded-sm border border-hairline px-md py-xs text-body-md"
+              className="field"
             />
             <input
               placeholder="Location"
               value={form.location}
               onChange={(e) => setForm({ ...form, location: e.target.value })}
-              className="rounded-sm border border-hairline px-md py-xs text-body-md"
+              className="field"
             />
             <select
               value={form.employmentType}
               onChange={(e) => setForm({ ...form, employmentType: e.target.value as EmploymentType })}
-              className="rounded-sm border border-hairline px-md py-xs text-body-md"
+              className="field"
             >
               {EMPLOYMENT_TYPES.map((t) => (
                 <option key={t} value={t}>
@@ -288,10 +314,10 @@ export function JobsPage() {
             </select>
           </div>
 
-          <div className="mt-md flex items-center gap-lg">
-            <label className="text-body-md text-body">Urgency</label>
+          <div className="mt-md flex flex-wrap items-center gap-x-lg gap-y-xs">
+            <span className="text-label-md text-ink">Urgency</span>
             {JOB_URGENCY_LEVELS.map((u: JobUrgency) => (
-              <label key={u} className="flex items-center gap-xs text-body-md text-body">
+              <label key={u} className="flex min-h-[44px] items-center gap-xs text-body-md text-body">
                 <input
                   type="radio"
                   name="urgency"
@@ -309,7 +335,7 @@ export function JobsPage() {
             onChange={(e) => setForm({ ...form, description: e.target.value })}
             rows={4}
             maxLength={3000}
-            className="mt-md block w-full rounded-sm border border-hairline px-md py-xs text-body-md"
+            className="mt-md block w-full field"
           />
 
           <div className="mt-md">
@@ -326,7 +352,7 @@ export function JobsPage() {
             value={form.experienceLevel}
             onChange={(e) => setForm({ ...form, experienceLevel: e.target.value })}
             maxLength={200}
-            className="mt-md block w-full rounded-sm border border-hairline px-md py-xs text-body-md"
+            className="mt-md block w-full field"
           />
 
           <div className="mt-md grid gap-md md:grid-cols-2">
@@ -334,13 +360,13 @@ export function JobsPage() {
               placeholder="Contact person"
               value={form.contactPerson}
               onChange={(e) => setForm({ ...form, contactPerson: e.target.value })}
-              className="rounded-sm border border-hairline px-md py-xs text-body-md"
+              className="field"
             />
             <input
               placeholder="Contact details (email/phone)"
               value={form.contactDetails}
               onChange={(e) => setForm({ ...form, contactDetails: e.target.value })}
-              className="rounded-sm border border-hairline px-md py-xs text-body-md"
+              className="field"
             />
           </div>
 
@@ -349,7 +375,7 @@ export function JobsPage() {
             value={form.applicationMethod}
             onChange={(e) => setForm({ ...form, applicationMethod: e.target.value })}
             maxLength={500}
-            className="mt-md block w-full rounded-sm border border-hairline px-md py-xs text-body-md"
+            className="mt-md block w-full field"
           />
 
           <div className="mt-md">
@@ -361,7 +387,7 @@ export function JobsPage() {
               type="date"
               value={form.expirationDate.toISOString().slice(0, 10)}
               onChange={(e) => setForm({ ...form, expirationDate: new Date(e.target.value) })}
-              className="mt-xs block rounded-sm border border-hairline px-md py-xs text-body-md"
+              className="mt-xs block field"
             />
           </div>
 
@@ -378,7 +404,7 @@ export function JobsPage() {
 
       {myJobs.length > 0 && (
         <div className="mt-xl">
-          <h2 className="text-title-sm text-ink">Your postings</h2>
+          <h2 className="font-haas-disp text-title-md text-ink">Your postings</h2>
           <div className="mt-md space-y-md">
             {myJobs.map((job) => (
               <JobCard key={job.id} job={job} onWithdraw={() => void handleWithdraw(job.id)} />
@@ -388,11 +414,15 @@ export function JobsPage() {
       )}
 
       <div className="mt-xl">
-        <h2 className="text-title-sm text-ink">Open roles</h2>
+        <h2 className="font-haas-disp text-title-md text-ink">Open roles</h2>
         {loading ? (
-          <p className="mt-md text-body-md text-muted">Loading…</p>
+          <div className="mt-md">
+            <SkeletonList count={3} heightClass="h-[200px]" />
+          </div>
         ) : activeJobs.length === 0 ? (
-          <p className="mt-md text-body-md text-muted">No open roles right now.</p>
+          <div className="mt-md">
+            <EmptyState title="No open roles right now">New postings appear here once an admin approves them.</EmptyState>
+          </div>
         ) : (
           <div className="mt-md space-y-md">
             {activeJobs.map((job) => (
@@ -401,9 +431,11 @@ export function JobsPage() {
           </div>
         )}
         {hasMore && (
-          <Button variant="secondary" className="mt-md" onClick={() => void loadMore()}>
-            Load more
-          </Button>
+          <div className="mt-lg flex justify-center">
+            <Button variant="secondary" onClick={() => void loadMore()}>
+              Load more
+            </Button>
+          </div>
         )}
       </div>
     </div>

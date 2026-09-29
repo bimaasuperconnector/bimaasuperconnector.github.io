@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { Button } from '../../../components/ui/Button';
 import { findBatch, allBatches } from '../../../lib/batches';
 import { useUserRecord } from '../../../context/UserRecordContext';
@@ -22,6 +22,19 @@ import { type AuditLogEntry, queryRecentAuditLogs } from '../../../firebase/repo
 import { CommunicationSegments } from '../../../components/admin/CommunicationSegments';
 import { Avatar } from '../../../components/ui/Avatar';
 import { BadgesManagement } from '../../../components/admin/BadgesManagement';
+import { EmptyState, ErrorNote, PageHeader, SkeletonList } from '../../../components/ui/PageHeader';
+
+function AdminSection({ id, title, action, children }: { id: string; title: string; action?: ReactNode; children: ReactNode }) {
+  return (
+    <section id={id} className="surface-card scroll-mt-20 p-lg md:p-xl">
+      <div className="flex items-center justify-between gap-md">
+        <h2 className="font-haas-disp text-title-md text-ink">{title}</h2>
+        {action}
+      </div>
+      <div className="mt-sm">{children}</div>
+    </section>
+  );
+}
 
 function MetricsDashboard() {
   const [metrics, setMetrics] = useState<AdminMetrics | null>(null);
@@ -46,26 +59,32 @@ function MetricsDashboard() {
     : [];
 
   return (
-    <div className="rounded-md border border-hairline p-xl">
-      <h1 className="text-title-lg text-ink">Dashboard</h1>
-      <p className="mt-sm text-body-md text-body">
-        Each number below comes from a Firestore count query, not a full download of the
-        underlying collection — safe to load on every visit to this page, even as the alumni base
-        grows.
+    <AdminSection id="dashboard" title="Dashboard">
+      <p className="copy">
+        Each number below comes from a Firestore count query, not a full download of the underlying collection —
+        safe to load on every visit to this page, even as the alumni base grows.
       </p>
-      {error && <p className="mt-md text-body-md text-signature-coral">{error}</p>}
-      {!metrics && !error && <p className="mt-lg text-body-md text-muted">Loading…</p>}
+      {error && (
+        <div className="mt-md">
+          <ErrorNote>{error}</ErrorNote>
+        </div>
+      )}
+      {!metrics && !error && (
+        <div className="mt-lg">
+          <SkeletonList count={1} heightClass="h-20" />
+        </div>
+      )}
       {metrics && (
         <div className="mt-lg grid grid-cols-2 gap-md md:grid-cols-4">
           {tiles.map(([label, value]) => (
-            <div key={label} className="rounded-sm bg-surface-soft p-md">
-              <p className="text-display-md text-ink">{value}</p>
+            <div key={label} className="surface-soft-card p-md">
+              <p className="font-haas-disp text-display-md text-ink">{value}</p>
               <p className="text-body-md text-muted">{label}</p>
             </div>
           ))}
         </div>
       )}
-    </div>
+    </AdminSection>
   );
 }
 
@@ -98,25 +117,28 @@ function ReportsQueue() {
   }
 
   return (
-    <div className="mt-lg rounded-md border border-hairline p-xl">
-      <h1 className="text-title-lg text-ink">Reports</h1>
-      <p className="mt-sm text-body-md text-body">
-        Job postings flagged by fellow alumni. Resolving or dismissing a report doesn't remove the
-        posting itself — use the pending/approved job tools below for that.
+    <AdminSection id="reports" title="Reports">
+      <p className="copy">
+        Job postings flagged by fellow alumni. Resolving or dismissing a report doesn't remove the posting itself —
+        use the pending/approved job tools below for that.
       </p>
       {loading ? (
-        <p className="mt-lg text-body-md text-muted">Loading…</p>
+        <div className="mt-lg">
+          <SkeletonList count={2} heightClass="h-16" />
+        </div>
       ) : reports.length === 0 ? (
-        <p className="mt-lg text-body-md text-muted">No open reports.</p>
+        <div className="mt-lg">
+          <EmptyState title="No open reports" />
+        </div>
       ) : (
         <ul className="mt-lg space-y-md">
           {reports.map((r) => (
-            <li key={r.id} className="rounded-sm border border-hairline p-md">
+            <li key={r.id} className="rounded-lg bg-surface-soft p-md">
               <p className="text-label-md text-ink">
                 {REPORT_REASON_LABELS[r.reason] ?? r.reason} · {r.targetType} {r.targetId}
               </p>
-              {r.note && <p className="mt-xs text-body-md text-body">“{r.note}”</p>}
-              <div className="mt-sm flex gap-sm">
+              {r.note && <p className="mt-xs text-body-md text-body">"{r.note}"</p>}
+              <div className="mt-sm flex flex-wrap gap-sm">
                 <Button
                   variant="secondary"
                   className="px-md py-xs"
@@ -138,7 +160,7 @@ function ReportsQueue() {
           ))}
         </ul>
       )}
-    </div>
+    </AdminSection>
   );
 }
 
@@ -182,37 +204,40 @@ function RoleManagement() {
   }
 
   return (
-    <div className="mt-lg rounded-md border border-hairline p-xl">
-      <h1 className="text-title-lg text-ink">Role management</h1>
-      <p className="mt-sm text-body-md text-body">
-        Look up a member by email to promote them to batch representative (scoped to specific
-        batches) or super admin, or to demote them back to a regular member.
+    <AdminSection id="roles" title="Role management">
+      <p className="copy">
+        Look up a member by email to promote them to batch representative (scoped to specific batches) or super
+        admin, or to demote them back to a regular member.
       </p>
 
-      <div className="mt-lg flex gap-sm">
+      <div className="mt-lg flex flex-col gap-sm sm:flex-row">
         <input
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="member@example.com"
-          className="flex-1 rounded-sm border border-hairline px-md py-xs text-body-md"
+          className="field flex-1"
         />
         <Button variant="secondary" disabled={searching || !email.trim()} onClick={() => void search()}>
           {searching ? 'Searching…' : 'Look up'}
         </Button>
       </div>
 
-      {error && <p className="mt-md text-body-md text-signature-coral">{error}</p>}
+      {error && (
+        <div className="mt-md">
+          <ErrorNote>{error}</ErrorNote>
+        </div>
+      )}
 
       {found && (
-        <div className="mt-lg rounded-sm border border-hairline p-md">
+        <div className="fade-enter mt-lg rounded-lg bg-surface-soft p-md">
           <p className="text-label-md text-ink">{found.displayName || 'Unnamed account'}</p>
           <p className="text-body-md text-muted">
-            {found.email} · currently <strong>{found.role}</strong>
+            {found.email} · currently <strong className="text-ink">{found.role}</strong>
           </p>
 
           <div className="mt-md">
-            <p className="text-body-md text-body">Assigned batches (only used for batch_admin)</p>
+            <p className="text-label-md text-ink">Assigned batches (only used for batch_admin)</p>
             <div className="mt-xs flex flex-wrap gap-xs">
               {BATCHES.map((b) => (
                 <label key={b.batchNumber} className="flex items-center gap-xxs text-body-md text-body">
@@ -249,7 +274,7 @@ function RoleManagement() {
           </div>
         </div>
       )}
-    </div>
+    </AdminSection>
   );
 }
 
@@ -265,48 +290,53 @@ function AuditLogViewer() {
   }, []);
 
   return (
-    <div className="mt-lg rounded-md border border-hairline p-xl">
-      <div className="flex items-center justify-between">
-        <h1 className="text-title-lg text-ink">Automation runs</h1>
+    <AdminSection
+      id="automation"
+      title="Automation runs"
+      action={
         <Button variant="secondary" className="px-md py-xs" onClick={() => setExpanded((e) => !e)}>
           {expanded ? 'Hide' : 'Show'}
         </Button>
-      </div>
-      <p className="mt-sm text-body-md text-body">
-        The most recent 50 scheduled automation job runs (cycle state, matching, calendar, feedback
-        scoring), so you don't have to open the Firebase console to check whether last night's run
-        succeeded.
+      }
+    >
+      <p className="copy">
+        The most recent 50 scheduled automation job runs (cycle state, matching, calendar, feedback scoring), so you
+        don't have to open the Firebase console to check whether last night's run succeeded.
       </p>
-      {expanded && (
-        loading ? (
-          <p className="mt-lg text-body-md text-muted">Loading…</p>
+      {expanded &&
+        (loading ? (
+          <div className="mt-lg">
+            <SkeletonList count={3} heightClass="h-14" />
+          </div>
         ) : logs.length === 0 ? (
-          <p className="mt-lg text-body-md text-muted">No automation runs recorded yet.</p>
+          <div className="mt-lg">
+            <EmptyState title="No automation runs recorded yet" />
+          </div>
         ) : (
-          <ul className="mt-lg space-y-sm">
+          <ul className="fade-enter mt-lg space-y-sm">
             {logs.map((log) => (
-              <li key={log.id} className="rounded-sm border border-hairline p-sm text-body-md">
-                <span
-                  className={
-                    log.status === 'success'
-                      ? 'text-success'
-                      : log.status === 'failure'
-                        ? 'text-signature-coral'
-                        : 'text-muted'
-                  }
-                >
-                  {log.status}
-                </span>{' '}
-                — {log.jobName} {log.cycleId ? `(${log.cycleId})` : ''} —{' '}
-                {log.createdAt.toLocaleString()}
-                <p className="text-muted">{log.summary}</p>
-                {log.error && <p className="text-signature-coral">{log.error}</p>}
+              <li key={log.id} className="rounded-lg border border-hairline p-md">
+                <p className="text-body-md text-body">
+                  <span
+                    className={`text-label-md ${
+                      log.status === 'success'
+                        ? 'text-success'
+                        : log.status === 'failure'
+                          ? 'text-signature-coral'
+                          : 'text-muted'
+                    }`}
+                  >
+                    {log.status}
+                  </span>{' '}
+                  — {log.jobName} {log.cycleId ? `(${log.cycleId})` : ''} — {log.createdAt.toLocaleString()}
+                </p>
+                <p className="mt-xxs text-body-md text-muted">{log.summary}</p>
+                {log.error && <p className="mt-xxs text-body-md text-signature-coral">{log.error}</p>}
               </li>
             ))}
           </ul>
-        )
-      )}
-    </div>
+        ))}
+    </AdminSection>
   );
 }
 
@@ -373,124 +403,152 @@ export function AdminIndexPage() {
     }
   }
 
+  const sections: [string, string][] = [
+    ['dashboard', 'Dashboard'],
+    ['reports', 'Reports'],
+    ...(isSuperAdmin ? ([['roles', 'Roles'], ['badges', 'Badges']] as [string, string][]) : []),
+    ['segments', 'Segments'],
+    ['automation', 'Automation'],
+    ['approvals', 'Approvals'],
+    ['jobs', 'Jobs'],
+  ];
+
   return (
-    <>
-    <MetricsDashboard />
-    <ReportsQueue />
-    {isSuperAdmin && <RoleManagement />}
-    {isSuperAdmin && <BadgesManagement />}
-    <CommunicationSegments />
-    <AuditLogViewer />
-    <div className="mt-lg rounded-md border border-hairline p-xl">
-      <h1 className="text-title-lg text-ink">Pending approvals</h1>
-      <p className="mt-sm text-body-md text-body">
-        {isSuperAdmin
-          ? 'Every pending sign-in across all batches.'
-          : `Pending sign-ins for your assigned batch${
-              (record?.assignedBatchNumbers.length ?? 0) === 1 ? '' : 'es'
-            }.`}
-      </p>
+    <div className="space-y-lg">
+      <PageHeader title="Admin console" description="Moderation, roles, communication and automation for BIM AA." />
 
-      {error && <p className="mt-md text-body-md text-signature-coral">{error}</p>}
+      <nav aria-label="Admin sections" className="-mx-md flex gap-xs overflow-x-auto px-md pb-xxs no-scrollbar md:mx-0 md:px-0">
+        {sections.map(([id, label]) => (
+          <a key={id} href={`#${id}`} className="tab-chip shrink-0 !border-hairline">
+            {label}
+          </a>
+        ))}
+      </nav>
 
-      {loading ? (
-        <p className="mt-lg text-body-md text-muted">Loading…</p>
-      ) : pending.length === 0 ? (
-        <p className="mt-lg text-body-md text-muted">No pending accounts right now.</p>
-      ) : (
-        <ul className="mt-lg space-y-md">
-          {pending.map((person) => {
-            const batch = person.batchNumber !== null ? findBatch(person.batchNumber) : undefined;
-            return (
-              <li key={person.uid} className="rounded-sm border border-hairline p-md">
-                <div className="flex items-center justify-between gap-md">
-                  <div className="flex items-center gap-sm">
-                    <Avatar sizeClass="h-10 w-10" />
-                    <div>
-                      <p className="text-label-md text-ink">{person.displayName || 'Unnamed account'}</p>
-                      <p className="text-body-md text-muted">
-                        {person.email} {batch ? `· ${batch.label}` : ''}
-                      </p>
+      <MetricsDashboard />
+      <ReportsQueue />
+      {isSuperAdmin && <RoleManagement />}
+      {isSuperAdmin && <BadgesManagement />}
+      <CommunicationSegments />
+      <AuditLogViewer />
+
+      <AdminSection
+        id="approvals"
+        title="Pending approvals"
+      >
+        <p className="copy">
+          {isSuperAdmin
+            ? 'Every pending sign-in across all batches.'
+            : `Pending sign-ins for your assigned batch${
+                (record?.assignedBatchNumbers.length ?? 0) === 1 ? '' : 'es'
+              }.`}
+        </p>
+
+        {error && (
+          <div className="mt-md">
+            <ErrorNote>{error}</ErrorNote>
+          </div>
+        )}
+
+        {loading ? (
+          <div className="mt-lg">
+            <SkeletonList count={2} heightClass="h-20" />
+          </div>
+        ) : pending.length === 0 ? (
+          <div className="mt-lg">
+            <EmptyState title="No pending accounts right now" />
+          </div>
+        ) : (
+          <ul className="mt-lg space-y-md">
+            {pending.map((person) => {
+              const batch = person.batchNumber !== null ? findBatch(person.batchNumber) : undefined;
+              return (
+                <li key={person.uid} className="rounded-lg bg-surface-soft p-md">
+                  <div className="flex flex-wrap items-center justify-between gap-md">
+                    <div className="flex items-center gap-sm">
+                      <Avatar sizeClass="h-10 w-10" />
+                      <div>
+                        <p className="text-label-md text-ink">{person.displayName || 'Unnamed account'}</p>
+                        <p className="text-body-md text-muted">
+                          {person.email} {batch ? `· ${batch.label}` : ''}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-sm">
+                      <Button
+                        variant="secondary"
+                        className="px-md py-xs"
+                        disabled={actioningUid === person.uid}
+                        onClick={() => void handleDecision(person.uid, 'rejected')}
+                      >
+                        Reject
+                      </Button>
+                      <Button
+                        variant="primary"
+                        className="px-md py-xs"
+                        disabled={actioningUid === person.uid}
+                        onClick={() => void handleDecision(person.uid, 'approved')}
+                      >
+                        Approve
+                      </Button>
                     </div>
                   </div>
-                  <div className="flex gap-sm">
+                  {person.note && <p className="mt-sm rounded-md bg-canvas p-sm text-body-md text-body">"{person.note}"</p>}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </AdminSection>
+
+      <AdminSection id="jobs" title="Pending job postings">
+        <p className="copy">New job postings wait here until approved, then appear on the Jobs board.</p>
+
+        {jobsLoading ? (
+          <div className="mt-lg">
+            <SkeletonList count={2} heightClass="h-24" />
+          </div>
+        ) : pendingJobs.length === 0 ? (
+          <div className="mt-lg">
+            <EmptyState title="No pending job postings right now" />
+          </div>
+        ) : (
+          <ul className="mt-lg space-y-md">
+            {pendingJobs.map((job) => (
+              <li key={job.id} className="rounded-lg bg-surface-soft p-md">
+                <div className="flex flex-wrap items-start justify-between gap-md">
+                  <div className="min-w-0">
+                    <p className="text-label-md text-ink">{job.title}</p>
+                    <p className="text-body-md text-muted">
+                      {job.company} · {job.location} · {EMPLOYMENT_TYPE_LABELS[job.employmentType]}
+                    </p>
+                    <p className="copy mt-xs">{job.description}</p>
+                    <p className="mt-xs text-caption text-muted">Posted by {job.postedByDisplayName}</p>
+                  </div>
+                  <div className="flex shrink-0 gap-sm">
                     <Button
                       variant="secondary"
                       className="px-md py-xs"
-                      disabled={actioningUid === person.uid}
-                      onClick={() => void handleDecision(person.uid, 'rejected')}
+                      disabled={actioningJobId === job.id}
+                      onClick={() => void handleJobDecision(job.id, 'rejected')}
                     >
                       Reject
                     </Button>
                     <Button
                       variant="primary"
                       className="px-md py-xs"
-                      disabled={actioningUid === person.uid}
-                      onClick={() => void handleDecision(person.uid, 'approved')}
+                      disabled={actioningJobId === job.id}
+                      onClick={() => void handleJobDecision(job.id, 'approved')}
                     >
                       Approve
                     </Button>
                   </div>
                 </div>
-                {person.note && (
-                  <p className="mt-sm rounded-sm bg-surface-soft p-sm text-body-md text-body">
-                    “{person.note}”
-                  </p>
-                )}
               </li>
-            );
-          })}
-        </ul>
-      )}
+            ))}
+          </ul>
+        )}
+      </AdminSection>
     </div>
-
-    <div className="mt-lg rounded-md border border-hairline p-xl">
-      <h1 className="text-title-lg text-ink">Pending job postings</h1>
-      <p className="mt-sm text-body-md text-body">
-        New job postings wait here until approved, then appear on the Jobs board.
-      </p>
-
-      {jobsLoading ? (
-        <p className="mt-lg text-body-md text-muted">Loading…</p>
-      ) : pendingJobs.length === 0 ? (
-        <p className="mt-lg text-body-md text-muted">No pending job postings right now.</p>
-      ) : (
-        <ul className="mt-lg space-y-md">
-          {pendingJobs.map((job) => (
-            <li key={job.id} className="rounded-sm border border-hairline p-md">
-              <div className="flex items-start justify-between gap-md">
-                <div>
-                  <p className="text-label-md text-ink">{job.title}</p>
-                  <p className="text-body-md text-muted">
-                    {job.company} · {job.location} · {EMPLOYMENT_TYPE_LABELS[job.employmentType]}
-                  </p>
-                  <p className="mt-xs text-body-md text-body">{job.description}</p>
-                  <p className="mt-xs text-caption text-muted">Posted by {job.postedByDisplayName}</p>
-                </div>
-                <div className="flex shrink-0 gap-sm">
-                  <Button
-                    variant="secondary"
-                    className="px-md py-xs"
-                    disabled={actioningJobId === job.id}
-                    onClick={() => void handleJobDecision(job.id, 'rejected')}
-                  >
-                    Reject
-                  </Button>
-                  <Button
-                    variant="primary"
-                    className="px-md py-xs"
-                    disabled={actioningJobId === job.id}
-                    onClick={() => void handleJobDecision(job.id, 'approved')}
-                  >
-                    Approve
-                  </Button>
-                </div>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-    </>
   );
 }

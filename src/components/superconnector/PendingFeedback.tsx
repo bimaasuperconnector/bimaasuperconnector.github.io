@@ -13,6 +13,7 @@ import {
 } from '../../firebase/repositories/feedbackRepository';
 import { getProfile } from '../../firebase/repositories/profilesRepository';
 import { db } from '../../firebase/init';
+import { EmptyState, ErrorNote, SkeletonList } from '../ui/PageHeader';
 
 interface PendingItem {
   matchId: string;
@@ -103,28 +104,21 @@ export function PendingFeedback() {
   }
 
   if (loading) {
-    return <p className="text-body-md text-muted">Checking for pending feedback…</p>;
+    return <SkeletonList count={1} heightClass="h-20" />;
   }
 
   if (pending.length === 0) {
-    return (
-      <p className="text-body-md text-muted">
-        Nothing to give feedback on right now — this fills in after a monthly
-        connection happens.
-      </p>
-    );
+    return <EmptyState title="Nothing to review right now">This fills in after a monthly connection happens.</EmptyState>;
   }
 
   return (
     <div className="space-y-md">
-      {error && <p className="text-body-md text-signature-coral">{error}</p>}
+      {error && <ErrorNote>{error}</ErrorNote>}
       {pending.map((item) => {
         const key = `${item.matchId}_${item.aboutUid}`;
         return (
-          <div key={key} className="rounded-sm border border-hairline p-md">
-            <p className="text-label-md text-ink">
-              How was your connection with {item.aboutDisplayName}?
-            </p>
+          <div key={key} className="rounded-lg bg-surface-soft p-md">
+            <p className="text-label-md text-ink">How was your connection with {item.aboutDisplayName}?</p>
             <div className="mt-sm flex flex-wrap gap-sm">
               {FEEDBACK_SENTIMENTS.map((sentiment) => (
                 <Button

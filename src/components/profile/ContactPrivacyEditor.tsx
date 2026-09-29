@@ -24,7 +24,7 @@ function ContactRow({ id, label, type, value, placeholder, visible, onValueChang
         onChange={(e) => onValueChange(e.target.value)}
         placeholder={placeholder}
         maxLength={type === 'url' ? 300 : 200}
-        className="mt-xs block w-full rounded-sm border border-hairline px-md py-xs text-body-md"
+        className="mt-xs block w-full field"
       />
       <label className="mt-xs flex items-center gap-xs text-body-md text-body">
         <input type="checkbox" checked={visible} onChange={(e) => onVisibleChange(e.target.checked)} />
@@ -42,10 +42,10 @@ export function ContactPrivacyEditor({
   onChange: (contact: ProfileContact) => void;
 }) {
   return (
-    <div className="space-y-lg rounded-md border border-hairline p-lg">
+    <div className="space-y-lg surface-card p-lg">
       <div>
-        <h2 className="text-title-sm text-ink">Contact & privacy</h2>
-        <p className="mt-xs text-body-md text-muted">
+        <h2 className="font-haas-disp text-title-md text-ink">Contact & privacy</h2>
+        <p className="copy mt-xs">
           Add these once — you choose exactly which ones fellow alumni can see. Anything you
           don't switch on stays private. If you do turn one on, it shows as a button (WhatsApp,
           Call, Email, LinkedIn) rather than as plain text — nobody sees your actual number or
@@ -62,7 +62,7 @@ export function ContactPrivacyEditor({
           type="date"
           value={contact.dob ?? ''}
           onChange={(e) => onChange({ ...contact, dob: e.target.value || null })}
-          className="mt-xs block w-full max-w-[220px] rounded-sm border border-hairline px-md py-xs text-body-md"
+          className="mt-xs block w-full max-w-[220px] field"
         />
         <p className="mt-xs text-caption text-muted">
           Only ever visible to you — no one else, not even an admin. Used only to send you a

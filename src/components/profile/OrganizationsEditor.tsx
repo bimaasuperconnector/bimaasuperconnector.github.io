@@ -46,21 +46,21 @@ export function OrganizationsEditor({ organizations, onChange }: OrganizationsEd
           <p className="text-body-md text-muted">No organizations added yet.</p>
         )}
         {organizations.map((org, index) => (
-          <div key={index} className="rounded-sm border border-hairline p-md">
+          <div key={index} className="surface-card p-md">
             <div className="grid gap-sm md:grid-cols-2">
               <input
                 type="text"
                 placeholder="Organization name"
                 value={org.name}
                 onChange={(e) => updateAt(index, { name: e.target.value })}
-                className="rounded-sm border border-hairline px-md py-xs text-body-md"
+                className="field"
               />
               <input
                 type="text"
                 placeholder="Title / role"
                 value={org.title}
                 onChange={(e) => updateAt(index, { title: e.target.value })}
-                className="rounded-sm border border-hairline px-md py-xs text-body-md"
+                className="field"
               />
               <input
                 type="number"
@@ -69,7 +69,7 @@ export function OrganizationsEditor({ organizations, onChange }: OrganizationsEd
                 onChange={(e) =>
                   updateAt(index, { startYear: e.target.value ? Number(e.target.value) : null })
                 }
-                className="rounded-sm border border-hairline px-md py-xs text-body-md"
+                className="field"
               />
               <input
                 type="number"
@@ -78,7 +78,7 @@ export function OrganizationsEditor({ organizations, onChange }: OrganizationsEd
                 onChange={(e) =>
                   updateAt(index, { endYear: e.target.value ? Number(e.target.value) : null })
                 }
-                className="rounded-sm border border-hairline px-md py-xs text-body-md"
+                className="field"
               />
             </div>
             <div className="mt-sm flex items-center justify-between">
@@ -93,7 +93,7 @@ export function OrganizationsEditor({ organizations, onChange }: OrganizationsEd
               <button
                 type="button"
                 onClick={() => removeAt(index)}
-                className="text-body-md text-signature-coral hover:underline"
+                className="inline-flex min-h-[36px] items-center text-body-md text-signature-coral hover:underline"
               >
                 Remove
               </button>

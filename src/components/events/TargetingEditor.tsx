@@ -132,7 +132,7 @@ export function TargetingEditor({
               setCityDraft(e.target.value);
               onChange({ ...value, targetCityLower: normalizeCityLower(e.target.value) });
             }}
-            className="block w-full max-w-[320px] rounded-sm border border-hairline px-md py-xs text-body-md"
+            className="block w-full max-w-[320px] field"
           />
           {/* Phase 14: the city is normalized against a controlled reference
               table (src/lib/geography.ts) before it's stored, the same
@@ -156,7 +156,7 @@ export function TargetingEditor({
               placeholder="member@example.com"
               value={emailDraft}
               onChange={(e) => setEmailDraft(e.target.value)}
-              className="flex-1 rounded-sm border border-hairline px-md py-xs text-body-md"
+              className="flex-1 field"
             />
             <Button variant="secondary" disabled={looking || !emailDraft.trim()} onClick={() => void addPerson()}>
               {looking ? 'Looking up…' : 'Add'}

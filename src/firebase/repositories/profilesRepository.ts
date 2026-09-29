@@ -378,6 +378,55 @@ export function emptyProfile(uid: string, seedDisplayName = ''): Profile {
   };
 }
 
+// --- Session profile cache (post-login UI revamp) ---
+//
+// Quota optimisation: every profile that a directory/search/Open to Work/
+// Entrepreneurship query has ALREADY downloaded is remembered in memory for
+// a few minutes, so opening someone's full profile from a search result is
+// zero extra Firestore reads instead of one read per click. The cache is
+// per browser tab, never persisted, and is only ever used for *other
+// members'* read-only views — the owner's own Profile page always reads
+// fresh (getProfile) so editing never works from stale data.
+const PROFILE_CACHE_TTL_MS = 5 * 60 * 1000;
+const PROFILE_CACHE_MAX = 300;
+const profileCache = new Map<string, { profile: Profile; at: number }>();
+
+export function rememberProfiles(profiles: Profile[]): void {
+  const now = Date.now();
+  for (const profile of profiles) {
+    profileCache.delete(profile.uid); // re-insert so it becomes the newest entry
+    profileCache.set(profile.uid, { profile, at: now });
+  }
+  while (profileCache.size > PROFILE_CACHE_MAX) {
+    const oldest = profileCache.keys().next().value;
+    if (oldest === undefined) break;
+    profileCache.delete(oldest);
+  }
+}
+
+export function getRememberedProfile(uid: string): Profile | null {
+  const hit = profileCache.get(uid);
+  if (!hit) return null;
+  if (Date.now() - hit.at > PROFILE_CACHE_TTL_MS) {
+    profileCache.delete(uid);
+    return null;
+  }
+  return hit.profile;
+}
+
+/**
+ * Read-only lookup of another member's profile for the full-profile view:
+ * served from the session cache when a search already fetched it, otherwise
+ * a single document read (which the Rules only allow for approved members).
+ */
+export async function getMemberProfile(uid: string): Promise<Profile | null> {
+  const remembered = getRememberedProfile(uid);
+  if (remembered) return remembered;
+  const profile = await getProfile(uid);
+  if (profile) rememberProfiles([profile]);
+  return profile;
+}
+
 export async function getProfile(uid: string): Promise<Profile | null> {
   const snapshot = await getDoc(profileDocRef(uid));
   return snapshot.exists() ? fromSnapshot(uid, snapshot.data()) : null;
@@ -386,10 +435,15 @@ export async function getProfile(uid: string): Promise<Profile | null> {
 export function subscribeToProfile(
   uid: string,
   onChange: (profile: Profile | null) => void,
+  onError?: (error: Error) => void,
 ): Unsubscribe {
-  return onSnapshot(profileDocRef(uid), (snapshot) => {
-    onChange(snapshot.exists() ? fromSnapshot(uid, snapshot.data()) : null);
-  });
+  return onSnapshot(
+    profileDocRef(uid),
+    (snapshot) => {
+      onChange(snapshot.exists() ? fromSnapshot(uid, snapshot.data()) : null);
+    },
+    onError,
+  );
 }
 
 /**
@@ -563,8 +617,10 @@ export async function queryDirectory(options: DirectoryQueryOptions): Promise<Di
   const docs = snapshot.docs.slice(0, pageSize);
   const hasMore = snapshot.docs.length > pageSize;
 
+  const profiles = docs.map((d) => fromSnapshot(d.id, d.data()));
+  rememberProfiles(profiles);
   return {
-    profiles: docs.map((d) => fromSnapshot(d.id, d.data())),
+    profiles,
     lastDoc: docs.length > 0 ? docs[docs.length - 1] : null,
     hasMore,
   };

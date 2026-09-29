@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useOwnProfile } from '../../context/OwnProfileContext';
 import { useUserRecord } from '../../context/UserRecordContext';
 import { Button } from '../../components/ui/Button';
 import { TagInput } from '../../components/profile/TagInput';
@@ -9,16 +10,14 @@ import { ContactPrivacyEditor } from '../../components/profile/ContactPrivacyEdi
 import { deleteProfilePhotoAsset } from '../../lib/photoUpload';
 import { ProfilePhotoUpload } from '../../components/profile/ProfilePhotoUpload';
 import { BadgePicker } from '../../components/profile/BadgePicker';
-import { Avatar } from '../../components/ui/Avatar';
-import { BadgeChips } from '../../components/profile/BadgeChips';
-import { ContactButtons } from '../../components/directory/ContactButtons';
-import { allBatches, findBatch } from '../../lib/batches';
+import { ProfileView } from '../../components/profile/ProfileView';
+import { ErrorNote, SkeletonList } from '../../components/ui/PageHeader';
+import { allBatches } from '../../lib/batches';
 import {
   type Profile,
   NETWORKING_PURPOSES,
   NETWORKING_PURPOSE_LABELS,
   emptyProfile,
-  getProfile,
   saveOwnProfile,
 } from '../../firebase/repositories/profilesRepository';
 import {
@@ -45,25 +44,39 @@ export function ProfilePage() {
   const savedPhotoFileId = useRef<string | null>(null);
   const uploadedThisSession = useRef<Set<string>>(new Set());
 
+  // The member's own profile arrives from the shell's single live listener
+  // (context/OwnProfileContext.tsx) — this page no longer re-reads
+  // profiles/{uid} on every visit. Only the private profileContacts/{uid}
+  // document (owner-only) still needs its own single read, and only when
+  // this page is opened.
+  const { profile: liveProfile, loaded: liveLoaded, failed: liveFailed } = useOwnProfile();
+  const seeded = useRef(false);
+  const mounted = useRef(true);
   useEffect(() => {
-    if (!user) return;
-    let cancelled = false;
-    // Both reads happen in parallel — this is still exactly one read of
-    // profiles/{uid} and one read of profileContacts/{uid}, the same as
-    // if they were sequential; running them together only saves
-    // latency, not quota, and only ever runs on the OWNER's own Profile
-    // page (never once per Directory card viewed).
-    Promise.all([getProfile(user.uid), getOwnProfileContact(user.uid)])
-      .then(([profileResult, contactResult]) => {
-        if (cancelled) return;
-        // Seed a brand-new profile's name from the onboarding name
-        // (users/{uid}.displayName, already loaded via UserRecordContext
-        // — zero extra reads) rather than starting blank, which is what
-        // produced "Unnamed alum" before a member's first resave.
-        savedPhotoFileId.current = profileResult?.photoFileId ?? null;
-        setProfile(
-          profileResult ?? emptyProfile(user.uid, record?.displayName ?? user.displayName ?? ''),
-        );
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!user || !liveLoaded || seeded.current) return;
+    if (liveFailed) {
+      setError("Couldn't load your profile. Please refresh.");
+      setLoading(false);
+      return;
+    }
+    seeded.current = true;
+    // Seed a brand-new profile's name from the onboarding name
+    // (users/{uid}.displayName, already loaded via UserRecordContext —
+    // zero extra reads) rather than starting blank, which is what
+    // produced "Unnamed alum" before a member's first resave.
+    savedPhotoFileId.current = liveProfile?.photoFileId ?? null;
+    setProfile(liveProfile ?? emptyProfile(user.uid, record?.displayName ?? user.displayName ?? ''));
+    setEditing(!liveProfile); // no profile yet -> go straight to edit mode
+    getOwnProfileContact(user.uid)
+      .then((contactResult) => {
+        if (!mounted.current) return;
         // Self-healing migration: if there's no contact doc yet but an
         // old public `links.linkedin` value exists (pre-revision), carry
         // it over as the starting LinkedIn value (still private/off by
@@ -72,22 +85,17 @@ export function ProfilePage() {
         setContact(
           contactResult ?? {
             ...emptyProfileContact(),
-            linkedinUrl: profileResult?.links.linkedin ?? '',
+            linkedinUrl: liveProfile?.links.linkedin ?? '',
           },
         );
-        setEditing(!profileResult); // no profile yet -> go straight to edit mode
       })
       .catch(() => {
-        if (!cancelled) setError("Couldn't load your profile. Please refresh.");
+        if (mounted.current) setError("Couldn't load your profile. Please refresh.");
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (mounted.current) setLoading(false);
       });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  }, [user, liveLoaded, liveFailed, liveProfile, record]);
 
   async function handleSave() {
     if (!user || !profile) return;
@@ -118,112 +126,49 @@ export function ProfilePage() {
   }
 
   if (loading || !profile) {
-    return <p className="text-body-md text-muted">Loading…</p>;
-  }
-
-  const batch = profile.batchNumber !== null ? findBatch(profile.batchNumber) : undefined;
-
-  if (!editing) {
-    return (
-      <div className="rounded-md border border-hairline p-xl">
-        <div className="flex items-start justify-between gap-md">
-          <div className="flex items-center gap-md">
-            <Avatar src={profile.photoURL} sizeClass="h-16 w-16" />
-            <div>
-              <h1 className="text-title-lg text-ink">{profile.displayName || 'Add your name'}</h1>
-              {profile.headline && <p className="text-body-md text-body">{profile.headline}</p>}
-              {batch && <p className="text-body-md text-muted">{batch.label}</p>}
-            </div>
-          </div>
-          <Button variant="secondary" onClick={() => setEditing(true)}>
-            Edit profile
-          </Button>
-        </div>
-
-        {profile.badges.length > 0 && (
-          <div className="mt-lg">
-            <BadgeChips badges={profile.badges} />
-          </div>
-        )}
-
-        {!profile.isComplete && (
-          <p className="mt-lg rounded-sm bg-surface-soft p-md text-body-md text-body">
-            Your profile isn't complete yet. Add your name, batch and a headline
-            so other alumni can find you in the directory.
-          </p>
-        )}
-
-        {(contact.visibility.phone || contact.visibility.whatsapp || contact.visibility.email || contact.visibility.linkedin) && (
-          <div className="mt-lg">
-            <p className="text-caption text-muted">Fellow alumni will see:</p>
-            <ContactButtons contact={profile.contactVisible} />
-          </div>
-        )}
-
-        {profile.bio && <p className="mt-lg text-body-md text-body">{profile.bio}</p>}
-        {profile.location && (
-          <p className="mt-sm text-body-md text-muted">📍 {profile.location}</p>
-        )}
-
-        {profile.organizations.length > 0 && (
-          <div className="mt-lg">
-            <h2 className="text-title-sm text-ink">Organizations</h2>
-            <ul className="mt-sm space-y-xs">
-              {profile.organizations.map((org, i) => (
-                <li key={i} className="text-body-md text-body">
-                  {org.title} at {org.name}
-                  {org.startYear ? ` (${org.startYear}\u2013${org.endYear ?? 'present'})` : ''}
-                  {org.isFounder ? ' · Founder' : ''}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {profile.education.length > 0 && (
-          <div className="mt-lg">
-            <h2 className="text-title-sm text-ink">Education</h2>
-            <ul className="mt-sm space-y-xs">
-              {profile.education.map((edu, i) => (
-                <li key={i} className="text-body-md text-body">
-                  {edu.degree} in {edu.field}, {edu.institution}
-                  {edu.endYear ? ` (${edu.endYear})` : ''}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {profile.skills.length > 0 && (
-          <div className="mt-lg">
-            <h2 className="text-title-sm text-ink">Skills</h2>
-            <p className="mt-sm text-body-md text-body">{profile.skills.join(', ')}</p>
-          </div>
-        )}
-
-        {profile.interests.length > 0 && (
-          <div className="mt-lg">
-            <h2 className="text-title-sm text-ink">Networking interests</h2>
-            <p className="mt-sm text-body-md text-body">{profile.interests.join(', ')}</p>
-          </div>
-        )}
-
-        {profile.networkingPurpose.length > 0 && (
-          <div className="mt-lg">
-            <h2 className="text-title-sm text-ink">Looking for</h2>
-            <p className="mt-sm text-body-md text-body">
-              {profile.networkingPurpose.map((p) => NETWORKING_PURPOSE_LABELS[p]).join(', ')}
-            </p>
-          </div>
-        )}
+    return error ? (
+      <ErrorNote>{error}</ErrorNote>
+    ) : (
+      <div className="space-y-lg" aria-busy="true" aria-label="Loading your profile">
+        <div className="skeleton h-[260px]" />
+        <SkeletonList count={2} heightClass="h-32" />
       </div>
     );
   }
 
+  if (!editing) {
+    // Saved data comes straight from the live listener (it fires immediately
+    // on a local save), so contact icons/photo reflect the latest save.
+    const shown = liveProfile ?? profile;
+    return (
+      <ProfileView
+        profile={shown}
+        contactCaption="Fellow alumni will see"
+        actions={
+          <Button variant="secondary" onClick={() => setEditing(true)}>
+            Edit profile
+          </Button>
+        }
+        notice={
+          !profile.isComplete && (
+            <p className="rounded-lg bg-surface-soft p-md text-body-md text-body">
+              Your profile isn't complete yet. Add your name, batch and a headline so other alumni can find you in the
+              directory.
+            </p>
+          )
+        }
+      />
+    );
+  }
+
   return (
-    <div className="rounded-md border border-hairline p-xl">
-      <h1 className="text-title-lg text-ink">Edit profile</h1>
-      {error && <p className="mt-sm text-body-md text-signature-coral">{error}</p>}
+    <div className="surface-card p-lg md:p-xl">
+      <h1 className="font-haas-disp text-title-lg text-ink md:text-display-md">Edit profile</h1>
+      {error && (
+        <div className="mt-md">
+          <ErrorNote>{error}</ErrorNote>
+        </div>
+      )}
 
       <div className="mt-lg space-y-lg">
         {user && (
@@ -249,7 +194,7 @@ export function ProfilePage() {
             placeholder="Full name"
             maxLength={200}
             required
-            className="mt-xs block w-full rounded-sm border border-hairline px-md py-xs text-body-md"
+            className="mt-xs block w-full field"
           />
           <p className="mt-xs text-caption text-muted">
             Shown to fellow alumni in the directory. You can update this any time — for example
@@ -270,7 +215,7 @@ export function ProfilePage() {
                 batchNumber: e.target.value ? Number(e.target.value) : null,
               })
             }
-            className="mt-xs block w-full rounded-sm border border-hairline px-md py-xs text-body-md"
+            className="mt-xs block w-full field"
           >
             <option value="">Select your batch…</option>
             {BATCHES.map((b) => (
@@ -292,7 +237,7 @@ export function ProfilePage() {
             onChange={(e) => setProfile({ ...profile, headline: e.target.value })}
             placeholder="e.g. Product Manager at Acme"
             maxLength={120}
-            className="mt-xs block w-full rounded-sm border border-hairline px-md py-xs text-body-md"
+            className="mt-xs block w-full field"
           />
         </div>
 
@@ -306,7 +251,7 @@ export function ProfilePage() {
             onChange={(e) => setProfile({ ...profile, bio: e.target.value })}
             rows={4}
             maxLength={1000}
-            className="mt-xs block w-full rounded-sm border border-hairline px-md py-xs text-body-md"
+            className="mt-xs block w-full field"
           />
         </div>
 
@@ -321,7 +266,7 @@ export function ProfilePage() {
             onChange={(e) => setProfile({ ...profile, location: e.target.value })}
             placeholder="City, country"
             maxLength={120}
-            className="mt-xs block w-full rounded-sm border border-hairline px-md py-xs text-body-md"
+            className="mt-xs block w-full field"
           />
         </div>
 
@@ -389,7 +334,7 @@ export function ProfilePage() {
               setProfile({ ...profile, links: { ...profile.links, website: e.target.value } })
             }
             placeholder="https://…"
-            className="mt-xs block w-full max-w-[420px] rounded-sm border border-hairline px-md py-xs text-body-md"
+            className="mt-xs block w-full max-w-[420px] field"
           />
           <p className="mt-xs text-caption text-muted">
             Always shown publicly — for LinkedIn, phone, WhatsApp and email, see "Contact &
@@ -399,7 +344,7 @@ export function ProfilePage() {
 
         <ContactPrivacyEditor contact={contact} onChange={setContact} />
 
-        <div className="flex gap-md">
+        <div className="sticky bottom-[calc(60px+env(safe-area-inset-bottom,0px))] z-30 -mx-lg flex gap-md border-t border-hairline bg-canvas px-lg py-sm md:static md:mx-0 md:border-0 md:bg-transparent md:p-0">
           <Button
             variant="primary"
             onClick={() => void handleSave()}

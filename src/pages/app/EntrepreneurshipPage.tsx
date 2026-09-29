@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import type { DocumentData, QueryDocumentSnapshot } from 'firebase/firestore';
 import { Button } from '../../components/ui/Button';
+import { EmptyState, ErrorNote, PageHeader, SkeletonList } from '../../components/ui/PageHeader';
 import { VentureCard } from '../../components/entrepreneurship/VentureCard';
 import {
   type OrganizationEntry,
@@ -107,15 +109,23 @@ export function EntrepreneurshipPage() {
 
   return (
     <div>
-      <h1 className="text-title-lg text-ink">Entrepreneurship</h1>
-      <p className="mt-sm text-body-md text-body">
-        Alumni-founded ventures, drawn directly from each member's own organization history. Mark
-        "I founded/own this" against any organization on your Profile page to appear here.
-      </p>
+      <PageHeader
+        title="Entrepreneurship"
+        description={
+          <>
+            Alumni-founded ventures, drawn directly from each member's own organization history. Mark "I
+            founded/own this" against any organization on your{' '}
+            <Link to="/app/profile" className="text-link">
+              Profile page
+            </Link>{' '}
+            to appear here.
+          </>
+        }
+      />
 
       {ventures.length > 0 && (
-        <div className="mt-lg">
-          <label className="text-body-md text-muted" htmlFor="venture-refine">
+        <div className="mt-lg max-w-[420px]">
+          <label className="text-label-md text-ink" htmlFor="venture-refine">
             Filter by organization or founder name
           </label>
           <input
@@ -124,33 +134,39 @@ export function EntrepreneurshipPage() {
             value={refineText}
             onChange={(e) => setRefineText(e.target.value)}
             placeholder="e.g. a company name…"
-            className="mt-xs block w-full max-w-[420px] rounded-sm border border-hairline px-md py-xs text-body-md"
+            className="field mt-xs block w-full"
           />
         </div>
       )}
 
-      {error && <p className="mt-md text-body-md text-signature-coral">{error}</p>}
-
-      {!loading && ventures.length === 0 && !error && (
-        <p className="mt-lg text-body-md text-muted">
-          No alumni have marked a founder/owner organization yet.
-        </p>
+      {error && (
+        <div className="mt-md">
+          <ErrorNote>{error}</ErrorNote>
+        </div>
       )}
 
-      <div className="mt-lg grid gap-md md:grid-cols-2 lg:grid-cols-3">
-        {visibleVentures.map((v) => (
-          <VentureCard
-            key={`${v.profile.uid}_${v.organization.name}_${v.organization.startYear ?? 'na'}`}
-            profile={v.profile}
-            organization={v.organization}
-          />
-        ))}
+      <div className="mt-lg">
+        {loading && ventures.length === 0 ? (
+          <SkeletonList count={3} heightClass="h-[220px]" />
+        ) : ventures.length === 0 && !error ? (
+          <EmptyState title="No ventures listed yet">
+            No alumni have marked a founder/owner organization yet.
+          </EmptyState>
+        ) : (
+          <div className="grid gap-md md:grid-cols-2 lg:grid-cols-3">
+            {visibleVentures.map((v) => (
+              <VentureCard
+                key={`${v.profile.uid}_${v.organization.name}_${v.organization.startYear ?? 'na'}`}
+                profile={v.profile}
+                organization={v.organization}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
-      {loading && <p className="mt-lg text-body-md text-muted">Loading…</p>}
-
       {hasMore && !loading && (
-        <div className="mt-lg">
+        <div className="mt-lg flex justify-center">
           <Button variant="secondary" onClick={() => void load(true)}>
             Load more
           </Button>

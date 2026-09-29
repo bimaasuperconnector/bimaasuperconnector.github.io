@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { Button } from '../../components/ui/Button';
+import { CheckIcon, ClockIcon, UsersIcon } from '../../components/icons/NavIcons';
+import { ErrorNote, PageHeader, SkeletonList } from '../../components/ui/PageHeader';
 import {
   MODE_LABELS,
   REGISTRATION_MODES,
@@ -22,6 +24,47 @@ import {
 } from '../../firebase/repositories/registrationsRepository';
 import { getCycleState } from '../../firebase/repositories/cyclesRepository';
 import { PendingFeedback } from '../../components/superconnector/PendingFeedback';
+
+/** One selectable option, styled as a bordered card rather than a bare radio. */
+function OptionCard({
+  checked,
+  disabled,
+  onSelect,
+  title,
+  hint,
+}: {
+  checked: boolean;
+  disabled?: boolean;
+  onSelect: () => void;
+  title: string;
+  hint?: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={onSelect}
+      className={`flex min-h-[52px] w-full items-center justify-between gap-md rounded-lg border px-md py-sm text-left transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50 ${
+        checked ? 'border-primary bg-surface-soft' : 'border-hairline bg-canvas hover:bg-surface-soft'
+      }`}
+    >
+      <span>
+        <span className="block text-label-md text-ink">{title}</span>
+        {hint && <span className="block text-body-md text-muted">{hint}</span>}
+      </span>
+      <span
+        aria-hidden="true"
+        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${
+          checked ? 'border-primary bg-primary text-on-primary' : 'border-border-strong'
+        }`}
+      >
+        {checked && <CheckIcon width={12} height={12} />}
+      </span>
+    </button>
+  );
+}
 
 export function SuperConnectorPage() {
   const { user } = useAuth();
@@ -93,106 +136,103 @@ export function SuperConnectorPage() {
   }
 
   return (
-    <>
-      <div className="rounded-md border border-hairline p-xl">
-        <h1 className="text-title-lg text-ink">SuperConnector</h1>
-      <p className="mt-sm text-body-md text-body">
-        This month's connections happen the weekend of{' '}
-        <strong className="text-ink">{formatCycleDates(cycle)}</strong>. Register your
-        availability and we'll match you with someone from the network closer to the
-        date.
-      </p>
+    <div className="space-y-lg">
+      <div className="surface-card p-lg md:p-xl">
+        <PageHeader
+          title="SuperConnector"
+          description={
+            <>
+              This month's connections happen the weekend of <strong className="text-ink">{formatCycleDates(cycle)}</strong>.
+              Register your availability and we'll match you with someone from the network closer to the date.
+            </>
+          }
+        />
 
-      {loading ? (
-        <p className="mt-lg text-body-md text-muted">Loading…</p>
-      ) : (
-        <div className="mt-lg space-y-lg">
-          {registration && (
-            <p className="rounded-sm bg-surface-soft p-md text-body-md text-body">
-              You're registered for {SLOT_LABELS[registration.slot]} ·{' '}
-              {MODE_LABELS[registration.mode]}.
-            </p>
-          )}
+        {loading ? (
+          <div className="mt-lg">
+            <SkeletonList count={2} heightClass="h-14" />
+          </div>
+        ) : (
+          <div className="mt-lg space-y-lg">
+            {registration && (
+              <p className="flex items-center gap-xs rounded-lg bg-signature-mint p-md text-body-md text-ink">
+                <CheckIcon width={16} height={16} /> You're registered for {SLOT_LABELS[registration.slot]} ·{' '}
+                {MODE_LABELS[registration.mode]}.
+              </p>
+            )}
 
-          {!registrationOpen && (
-            <p className="rounded-sm bg-surface-soft p-md text-body-md text-body">
-              Registration for this cycle has closed — matching is starting
-              soon. {registration ? "You can still withdraw if you need to." : ''}
-            </p>
-          )}
+            {!registrationOpen && (
+              <p className="flex items-start gap-xs rounded-lg bg-surface-soft p-md text-body-md text-body">
+                <ClockIcon width={16} height={16} className="mt-[2px] shrink-0" />
+                Registration for this cycle has closed — matching is starting soon.{' '}
+                {registration ? 'You can still withdraw if you need to.' : ''}
+              </p>
+            )}
 
-          {error && <p className="text-body-md text-signature-coral">{error}</p>}
+            {error && <ErrorNote>{error}</ErrorNote>}
 
-          <div className={registrationOpen ? '' : 'pointer-events-none opacity-50'}>
-            <div>
-              <p className="text-label-md text-ink">When are you available?</p>
-              <div className="mt-sm space-y-xs">
-                {REGISTRATION_SLOTS.map((s) => (
-                  <label key={s} className="flex items-center gap-xs text-body-md text-body">
-                    <input
-                      type="radio"
-                      name="slot"
+            <div className={registrationOpen ? '' : 'pointer-events-none opacity-50'}>
+              <div role="radiogroup" aria-label="When are you available?">
+                <p className="text-label-md text-ink">When are you available?</p>
+                <div className="mt-sm space-y-xs">
+                  {REGISTRATION_SLOTS.map((s) => (
+                    <OptionCard
+                      key={s}
                       checked={slot === s}
                       disabled={!registrationOpen}
-                      onChange={() => setSlot(s)}
+                      onSelect={() => setSlot(s)}
+                      title={SLOT_LABELS[s]}
                     />
-                    {SLOT_LABELS[s]}
-                  </label>
-                ))}
+                  ))}
+                </div>
               </div>
-            </div>
 
-            <div className="mt-lg">
-              <p className="text-label-md text-ink">How would you like to connect?</p>
-              <div className="mt-sm space-y-xs">
-                {REGISTRATION_MODES.map((m) => (
-                  <label key={m} className="flex items-center gap-xs text-body-md text-body">
-                    <input
-                      type="radio"
-                      name="mode"
+              <div role="radiogroup" aria-label="How would you like to connect?" className="mt-lg">
+                <p className="flex items-center gap-xs text-label-md text-ink">
+                  <UsersIcon width={16} height={16} /> How would you like to connect?
+                </p>
+                <div className="mt-sm space-y-xs">
+                  {REGISTRATION_MODES.map((m) => (
+                    <OptionCard
+                      key={m}
                       checked={mode === m}
                       disabled={!registrationOpen}
-                      onChange={() => setMode(m)}
+                      onSelect={() => setMode(m)}
+                      title={MODE_LABELS[m]}
+                      hint={
+                        m === 'small_circle'
+                          ? `Target ${SMALL_CIRCLE_TARGET}, ${SMALL_CIRCLE_MIN}–${SMALL_CIRCLE_MAX} people`
+                          : undefined
+                      }
                     />
-                    {MODE_LABELS[m]}
-                    {m === 'small_circle' && (
-                      <span className="text-muted">
-                        {' '}
-                        (target {SMALL_CIRCLE_TARGET}, {SMALL_CIRCLE_MIN}–{SMALL_CIRCLE_MAX} people)
-                      </span>
-                    )}
-                  </label>
-                ))}
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
 
-          <div className="flex gap-md">
-            {registrationOpen && (
-              <Button variant="primary" onClick={() => void handleSave()} disabled={saving}>
-                {saving ? 'Saving…' : registration ? 'Update registration' : 'Register'}
-              </Button>
-            )}
-            {registration && (
-              <Button variant="secondary" onClick={() => void handleWithdraw()} disabled={saving}>
-                Withdraw
-              </Button>
-            )}
+            <div className="flex flex-wrap gap-md">
+              {registrationOpen && (
+                <Button variant="primary" onClick={() => void handleSave()} disabled={saving}>
+                  {saving ? 'Saving…' : registration ? 'Update registration' : 'Register'}
+                </Button>
+              )}
+              {registration && (
+                <Button variant="secondary" onClick={() => void handleWithdraw()} disabled={saving}>
+                  Withdraw
+                </Button>
+              )}
+            </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
 
-      <div className="mt-lg rounded-md border border-hairline p-xl">
-        <h2 className="text-title-lg text-ink">Feedback on past connections</h2>
-        <p className="mt-sm text-body-md text-body">
-          Your honest feedback helps future matching — it's never shown to
-          the person you're rating.
-        </p>
+      <div className="surface-card p-lg md:p-xl">
+        <h2 className="font-haas-disp text-title-md text-ink">Feedback on past connections</h2>
+        <p className="copy mt-xs">Your honest feedback helps future matching — it's never shown to the person you're rating.</p>
         <div className="mt-lg">
           <PendingFeedback />
         </div>
       </div>
-    </>
+    </div>
   );
 }
