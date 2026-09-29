@@ -6,6 +6,7 @@ import {
   limit as fsLimit,
   orderBy,
   query,
+  type QueryConstraint,
   startAfter,
   where,
 } from 'firebase/firestore';
@@ -43,7 +44,7 @@ export async function listOwnNotifications(
   before?: Date | null,
 ): Promise<Notification[]> {
   if (!db) throw new Error('Firestore is not configured.');
-  const constraints = [orderBy('createdAt', 'desc')];
+  const constraints: QueryConstraint[] = [orderBy('createdAt', 'desc')];
   if (before) constraints.push(startAfter(Timestamp.fromDate(before)));
   constraints.push(fsLimit(max));
   const snapshot = await getDocs(query(collection(db, 'notifications', uid, 'items'), ...constraints));
