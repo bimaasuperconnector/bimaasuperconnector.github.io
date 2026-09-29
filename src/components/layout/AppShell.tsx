@@ -51,20 +51,31 @@ function SideNav({ items }: { items: NavItem[] }) {
       <ul className="space-y-xxs">
         {items.map((item) => (
           <li key={item.to}>
-            <NavLink
-              to={item.to}
-              end={item.end}
-              className={({ isActive }) =>
-                `flex min-h-[44px] items-center gap-sm rounded-lg px-sm text-body-md transition-colors duration-150 ${
-                  isActive
-                    ? 'bg-surface-strong/60 font-medium text-ink'
-                    : 'text-body hover:bg-surface-soft hover:text-ink active:bg-surface-strong/60'
-                }`
-              }
-            >
-              <item.Icon />
-              {item.label}
-            </NavLink>
+            {item.disabled ? (
+              <span
+                aria-disabled="true"
+                title="Available once your application is approved"
+                className="flex min-h-[44px] cursor-not-allowed items-center gap-sm rounded-lg px-sm text-body-md text-border-strong opacity-60"
+              >
+                <item.Icon />
+                {item.label}
+              </span>
+            ) : (
+              <NavLink
+                to={item.to}
+                end={item.end}
+                className={({ isActive }) =>
+                  `flex min-h-[44px] items-center gap-sm rounded-lg px-sm text-body-md transition-colors duration-150 ${
+                    isActive
+                      ? 'bg-surface-strong/60 font-medium text-ink'
+                      : 'text-body hover:bg-surface-soft hover:text-ink active:bg-surface-strong/60'
+                  }`
+                }
+              >
+                <item.Icon />
+                {item.label}
+              </NavLink>
+            )}
           </li>
         ))}
       </ul>
@@ -73,14 +84,14 @@ function SideNav({ items }: { items: NavItem[] }) {
 }
 
 /** Phone-only bottom bar: four pinned destinations + a "More" sheet for the rest. */
-function BottomNav({ items }: { items: NavItem[] }) {
+function BottomNav({ items, pinnedPaths = BOTTOM_NAV_PATHS }: { items: NavItem[]; pinnedPaths?: string[] }) {
   const { pathname } = useLocation();
   const [moreOpen, setMoreOpen] = useState(false);
   const closeRef = useRef<HTMLButtonElement>(null);
   const moreTriggerRef = useRef<HTMLButtonElement>(null);
 
-  const pinned = BOTTOM_NAV_PATHS.map((to) => items.find((i) => i.to === to)).filter(Boolean) as NavItem[];
-  const rest = items.filter((i) => !BOTTOM_NAV_PATHS.includes(i.to));
+  const pinned = pinnedPaths.map((to) => items.find((i) => i.to === to)).filter(Boolean) as NavItem[];
+  const rest = items.filter((i) => !pinnedPaths.includes(i.to));
   const moreActive = rest.some((i) => pathname === i.to || pathname.startsWith(`${i.to}/`));
 
   useEffect(() => {
@@ -123,16 +134,25 @@ function BottomNav({ items }: { items: NavItem[] }) {
         <ul className="mx-auto flex max-w-[560px] items-stretch">
           {pinned.map((item) => (
             <li key={item.to} className="flex flex-1">
-              <NavLink to={item.to} end={item.end} className={({ isActive }) => tabClass(isActive)}>
-                {({ isActive }) => (
-                  <>
-                    <span className={iconWrap(isActive)}>
-                      <item.Icon width={22} height={22} />
-                    </span>
-                    {item.label === 'SuperConnector' ? 'Connect' : item.label}
-                  </>
-                )}
-              </NavLink>
+              {item.disabled ? (
+                <span aria-disabled="true" className={`${tabClass(false)} cursor-not-allowed text-border-strong opacity-60`}>
+                  <span className={iconWrap(false)}>
+                    <item.Icon width={22} height={22} />
+                  </span>
+                  {item.label === 'SuperConnector' ? 'Connect' : item.label}
+                </span>
+              ) : (
+                <NavLink to={item.to} end={item.end} className={({ isActive }) => tabClass(isActive)}>
+                  {({ isActive }) => (
+                    <>
+                      <span className={iconWrap(isActive)}>
+                        <item.Icon width={22} height={22} />
+                      </span>
+                      {item.label === 'SuperConnector' ? 'Connect' : item.label}
+                    </>
+                  )}
+                </NavLink>
+              )}
             </li>
           ))}
           <li className="flex flex-1">
@@ -180,17 +200,27 @@ function BottomNav({ items }: { items: NavItem[] }) {
             <ul className="mt-xs grid grid-cols-2 gap-sm">
               {rest.map((item) => (
                 <li key={item.to}>
-                  <NavLink
-                    to={item.to}
-                    className={({ isActive }) =>
-                      `flex min-h-[64px] items-center gap-sm rounded-lg border px-md text-body-md transition-colors duration-150 active:bg-surface-strong ${
-                        isActive ? 'border-primary bg-surface-soft text-ink' : 'border-hairline text-ink'
-                      }`
-                    }
-                  >
-                    <item.Icon />
-                    {item.label}
-                  </NavLink>
+                  {item.disabled ? (
+                    <span
+                      aria-disabled="true"
+                      className="flex min-h-[64px] cursor-not-allowed items-center gap-sm rounded-lg border border-hairline px-md text-body-md text-border-strong opacity-60"
+                    >
+                      <item.Icon />
+                      {item.label}
+                    </span>
+                  ) : (
+                    <NavLink
+                      to={item.to}
+                      className={({ isActive }) =>
+                        `flex min-h-[64px] items-center gap-sm rounded-lg border px-md text-body-md transition-colors duration-150 active:bg-surface-strong ${
+                          isActive ? 'border-primary bg-surface-soft text-ink' : 'border-hairline text-ink'
+                        }`
+                      }
+                    >
+                      <item.Icon />
+                      {item.label}
+                    </NavLink>
+                  )}
                 </li>
               ))}
             </ul>
@@ -206,12 +236,22 @@ function ShellContents() {
   const { record } = useUserRecord();
   const { profile } = useOwnProfile();
   const { pathname } = useLocation();
-  const feed = useNotificationsFeed(user?.uid);
+  const isPending = record?.status === 'pending';
+  // A pending applicant has no access to notifications (no read/count calls are made for them).
+  const feed = useNotificationsFeed(isPending ? undefined : user?.uid);
   const [paneOpen, setPaneOpen] = useState(false);
   const bellRef = useRef<HTMLButtonElement>(null);
 
   const isAnyAdmin = record?.role === 'super_admin' || record?.role === 'batch_admin';
-  const items = isAnyAdmin ? [...NAV_ITEMS, ADMIN_NAV_ITEM] : NAV_ITEMS;
+  const items: NavItem[] = isPending
+    ? NAV_ITEMS.map((item) => ({ ...item, disabled: item.to !== '/app/profile' }))
+    : isAnyAdmin
+      ? [...NAV_ITEMS, ADMIN_NAV_ITEM]
+      : NAV_ITEMS;
+  // For a pending applicant the profile is the only live destination, so pin it first.
+  const pinnedPaths = isPending
+    ? ['/app/profile', '/app', '/app/directory', '/app/superconnector']
+    : BOTTOM_NAV_PATHS;
 
   const openPane = useCallback(() => {
     setPaneOpen(true);
@@ -245,8 +285,9 @@ function ShellContents() {
       <header className="sticky top-0 z-50 border-b border-hairline bg-canvas">
         <div className="mx-auto flex h-16 w-full max-w-content items-center gap-xs px-md md:gap-md md:px-lg">
           <BrandMark />
-          <HeaderSearch />
+          {isPending ? <div className="flex-1" /> : <HeaderSearch />}
 
+          {!isPending && (
           <button
             ref={bellRef}
             type="button"
@@ -266,6 +307,7 @@ function ShellContents() {
               </span>
             )}
           </button>
+          )}
 
           <AccountMenu
             photoURL={profile?.photoURL ?? null}
@@ -277,7 +319,16 @@ function ShellContents() {
         </div>
       </header>
 
-      <NotificationsPane open={paneOpen} onClose={closePane} feed={feed} />
+      {!isPending && <NotificationsPane open={paneOpen} onClose={closePane} feed={feed} />}
+
+      {isPending && (
+        <div role="status" className="border-b border-hairline bg-signature-cream">
+          <p className="mx-auto w-full max-w-content px-md py-sm text-body-md text-ink md:px-lg">
+            <span className="font-medium">Pending approval.</span> Complete your profile so your batch
+            representative can recognise you. Everything else unlocks once you're approved.
+          </p>
+        </div>
+      )}
 
       <div className="mx-auto flex w-full max-w-content flex-1">
         <SideNav items={items} />
@@ -287,21 +338,22 @@ function ShellContents() {
           className="min-w-0 flex-1 px-md pb-[calc(88px+env(safe-area-inset-bottom,0px))] pt-lg outline-none md:px-xl md:pb-xxl md:pt-xl"
         >
           {/* Keyed on the path so each page eases in on navigation. */}
-          <div key={pathname} className="page-enter mx-auto w-full max-w-[1040px]">
+          <div key={`${pathname}:${record?.status ?? ''}`} className="page-enter mx-auto w-full max-w-[1040px]">
             <Outlet />
           </div>
         </main>
       </div>
 
-      <BottomNav items={items} />
+      <BottomNav items={items} pinnedPaths={pinnedPaths} />
     </div>
   );
 }
 
 export function AppShell() {
   const { user } = useAuth();
+  const { record } = useUserRecord();
   return (
-    <OwnProfileProvider uid={user?.uid}>
+    <OwnProfileProvider uid={user?.uid} source={record?.status === 'pending' ? 'pending' : 'profile'}>
       <ShellContents />
     </OwnProfileProvider>
   );

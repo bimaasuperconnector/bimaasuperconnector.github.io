@@ -89,7 +89,7 @@ async function readWorkerError(response: Response): Promise<string> {
 /** Turns a Worker error response into a message a member can act on. */
 function messageForStatus(status: number, serverMessage: string): string {
   if (status === 401) return 'Your sign-in has expired. Please refresh the page and try again.';
-  if (status === 403) return 'Only approved alumni can upload a profile photo.';
+  if (status === 403) return 'Only alumni with an active or pending account can upload a profile photo.';
   if (status === 413) return 'That photo is too large after processing. Please try a different image.';
   if (status === 415) return 'That image format is not supported. Please choose a JPEG, PNG or WebP photo.';
   if (status === 429) return 'Too many attempts. Please wait a minute and try again.';

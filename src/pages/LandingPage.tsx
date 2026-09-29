@@ -113,6 +113,7 @@ export function LandingPage() {
   // signed-out visitors.
   if (configured && !authLoading && user && !recordLoading) {
     if (record?.status === 'approved') return <Navigate to="/app" replace />;
+    if (record?.status === 'pending') return <Navigate to="/app/profile" replace />;
     if (record || needsOnboarding) return <Navigate to="/pending" replace />;
   }
 

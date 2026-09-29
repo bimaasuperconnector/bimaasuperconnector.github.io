@@ -41,6 +41,26 @@ service cloud.firestore {
       return callerHasUserDoc() && callerRecord().status == 'approved';
     }
 
+    // A signed-in member whose application is awaiting review. Pending
+    // members may edit ONLY their own private pendingProfiles/{uid}
+    // (and their owner-only profileContacts/{uid}) — nothing else.
+    function callerIsPending() {
+      return callerHasUserDoc() && callerRecord().status == 'pending';
+    }
+
+    // super_admin, or a batch_admin whose assignedBatchNumbers contains
+    // the batch the applicant chose at onboarding. This is a
+    // single-document get() check (used for a document `get`, never a
+    // `list`), so it is safe from the "queries are all or nothing" trap.
+    function callerAdminsBatchOf(applicantUid) {
+      return callerIsSuperAdmin()
+        || (callerIsBatchAdmin()
+            && exists(/databases/$(database)/documents/users/$(applicantUid))
+            && get(/databases/$(database)/documents/users/$(applicantUid)).data.batchNumber != null
+            && get(/databases/$(database)/documents/users/$(applicantUid)).data.batchNumber
+                 in callerRecord().assignedBatchNumbers);
+    }
+
     // Keep this ceiling in sync with CURRENT_MAX_BATCH_NUMBER in
     // src/lib/batches.ts. null is allowed on profiles (batch not yet
     // selected there) but NOT on users (batch is mandatory at onboarding
@@ -69,7 +89,13 @@ service cloud.firestore {
         && (!('linkedin' in m) || (m.linkedin is string && m.linkedin.size() <= 300));
     }
 
+    // Shared by profiles/{uid} (approved == true) and the private
+    // pendingProfiles/{uid} (approved == false).
     function isValidProfileShape(data) {
+      return isValidProfileShapeWith(data, true);
+    }
+
+    function isValidProfileShapeWith(data, approvedFlag) {
       // Phase 2/11 revision: `displayName` is now directly owner-edited
       // in the Profile form (a real "Name" field, seeded once from the
       // onboarding name but freely editable afterward — e.g. a surname
@@ -143,7 +169,7 @@ service cloud.firestore {
         // already-approved member later, their profile can stay
         // directory-visible (stale) until next resaved — accepted, see
         // notes.
-        && data.approved == true
+        && data.approved == approvedFlag
         && isValidBatchNumberOrNull(data.batchNumber)
         && data.keys().hasOnly(
              ['uid', 'displayName', 'displayNameLower', 'photoURL', 'photoFileId', 'batchNumber', 'headline',
@@ -284,6 +310,28 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Pending-approval profile (2026-09-29). A brand-new applicant has no
+    // profiles/{uid} yet (and must NOT be visible in the directory), so
+    // what they type while waiting lives here instead:
+    //  - readable ONLY by the applicant and by an admin who governs the
+    //    applicant's batch (super_admin, or the batch_admin assigned to
+    //    it) — never listable, never visible to other members;
+    //  - writable ONLY by the applicant while their status is 'pending';
+    //  - the batch is pinned to the batch chosen at onboarding, so an
+    //    applicant cannot switch batches to dodge the right approver;
+    //  - once approved, the app copies this document into profiles/{uid}
+    //    (the applicant is then allowed to write there) and the applicant
+    //    may delete this copy.
+    match /pendingProfiles/{uid} {
+      allow get: if isSelf(uid) || callerAdminsBatchOf(uid);
+      allow list: if false;
+      allow create, update: if isSelf(uid) && callerIsPending()
+        && request.resource.data.uid == uid
+        && request.resource.data.batchNumber == callerRecord().batchNumber
+        && isValidProfileShapeWith(request.resource.data, false);
+      allow delete: if isSelf(uid);
+    }
+
     // Phase 2/11 revision (2026-09-13): private contact channels + DOB.
     function isValidProfileContactShape(data) {
       return (data.dob == null || (data.dob is string && data.dob.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')))
@@ -318,10 +366,10 @@ service cloud.firestore {
     match /profileContacts/{uid} {
       allow get: if isSelf(uid);
       allow list: if false;
-      allow create: if isSelf(uid) && callerIsApproved()
+      allow create: if isSelf(uid) && (callerIsApproved() || callerIsPending())
         && request.resource.data.uid == uid
         && isValidProfileContactShape(request.resource.data);
-      allow update: if isSelf(uid) && callerIsApproved()
+      allow update: if isSelf(uid) && (callerIsApproved() || callerIsPending())
         && request.resource.data.uid == uid
         && isValidProfileContactShape(request.resource.data);
       allow delete: if false;

@@ -15,6 +15,8 @@ export interface NavItem {
   to: string;
   label: string;
   end?: boolean;
+  /** Greyed out and not navigable (used for members whose application is still pending). */
+  disabled?: boolean;
   Icon: ComponentType<SVGProps<SVGSVGElement>>;
 }
 

@@ -21,6 +21,8 @@ import { type Report, queryOpenReports, setReportStatus } from '../../../firebas
 import { type AuditLogEntry, queryRecentAuditLogs } from '../../../firebase/repositories/auditLogsRepository';
 import { CommunicationSegments } from '../../../components/admin/CommunicationSegments';
 import { Avatar } from '../../../components/ui/Avatar';
+import { ProfileView } from '../../../components/profile/ProfileView';
+import { type Profile, getPendingProfile } from '../../../firebase/repositories/profilesRepository';
 import { BadgesManagement } from '../../../components/admin/BadgesManagement';
 import { EmptyState, ErrorNote, PageHeader, SkeletonList } from '../../../components/ui/PageHeader';
 
@@ -340,6 +342,64 @@ function AuditLogViewer() {
   );
 }
 
+/**
+ * "View profile" for one pending applicant: loads their private
+ * pending-approval profile ONLY when an approver clicks (one document
+ * read, never in bulk), so opening the queue stays cheap however many
+ * applications are waiting.
+ */
+function PendingApplicantProfile({ uid }: { uid: string }) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function toggle() {
+    const next = !open;
+    setOpen(next);
+    if (!next || loaded) return;
+    setLoading(true);
+    setError(null);
+    try {
+      setProfile(await getPendingProfile(uid));
+      setLoaded(true);
+    } catch {
+      setError("Couldn't open this profile. If you're a batch representative, it may not be in one of your assigned batches.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="mt-sm">
+      <button
+        type="button"
+        onClick={() => void toggle()}
+        aria-expanded={open}
+        className="text-body-md text-link hover:text-link-active"
+      >
+        {open ? 'Hide profile' : 'View profile'}
+      </button>
+      {open && (
+        <div className="mt-sm">
+          {loading ? (
+            <SkeletonList count={1} heightClass="h-32" />
+          ) : error ? (
+            <ErrorNote>{error}</ErrorNote>
+          ) : profile ? (
+            <ProfileView profile={profile} contactCaption="Applicant chose to share" />
+          ) : (
+            <p className="rounded-md bg-canvas p-sm text-body-md text-muted">
+              This applicant hasn't filled in their profile yet.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function AdminIndexPage() {
   const { record } = useUserRecord();
   const isSuperAdmin = record?.role === 'super_admin';
@@ -444,6 +504,15 @@ export function AdminIndexPage() {
               }.`}
         </p>
 
+        {!isSuperAdmin && (record?.assignedBatchNumbers.length ?? 0) === 0 && (
+          <div className="mt-md">
+            <ErrorNote>
+              No batches are assigned to your account yet, so no applications can appear here. Ask a super admin to
+              assign your batch(es) under Roles.
+            </ErrorNote>
+          </div>
+        )}
+
         {error && (
           <div className="mt-md">
             <ErrorNote>{error}</ErrorNote>
@@ -494,6 +563,7 @@ export function AdminIndexPage() {
                     </div>
                   </div>
                   {person.note && <p className="mt-sm rounded-md bg-canvas p-sm text-body-md text-body">"{person.note}"</p>}
+                  <PendingApplicantProfile uid={person.uid} />
                 </li>
               );
             })}

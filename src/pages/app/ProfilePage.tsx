@@ -18,6 +18,7 @@ import {
   NETWORKING_PURPOSES,
   NETWORKING_PURPOSE_LABELS,
   emptyProfile,
+  saveOwnPendingProfile,
   saveOwnProfile,
 } from '../../firebase/repositories/profilesRepository';
 import {
@@ -32,6 +33,9 @@ const BATCHES = allBatches();
 export function ProfilePage() {
   const { user } = useAuth();
   const { record } = useUserRecord();
+  // An applicant whose account is still awaiting approval edits a private
+  // "pending approval" profile (visible only to their approvers).
+  const isPending = record?.status === 'pending';
   const [profile, setProfile] = useState<Profile | null>(null);
   const [contact, setContact] = useState<ProfileContact>(emptyProfileContact());
   const [loading, setLoading] = useState(true);
@@ -72,7 +76,10 @@ export function ProfilePage() {
     // zero extra reads) rather than starting blank, which is what
     // produced "Unnamed alum" before a member's first resave.
     savedPhotoFileId.current = liveProfile?.photoFileId ?? null;
-    setProfile(liveProfile ?? emptyProfile(user.uid, record?.displayName ?? user.displayName ?? ''));
+    const base = liveProfile ?? emptyProfile(user.uid, record?.displayName ?? user.displayName ?? '');
+    // The applicant's batch is fixed to what they chose at sign-up — it
+    // decides which batch representative reviews them.
+    setProfile(isPending ? { ...base, batchNumber: record?.batchNumber ?? base.batchNumber } : base);
     setEditing(!liveProfile); // no profile yet -> go straight to edit mode
     getOwnProfileContact(user.uid)
       .then((contactResult) => {
@@ -95,7 +102,7 @@ export function ProfilePage() {
       .finally(() => {
         if (mounted.current) setLoading(false);
       });
-  }, [user, liveLoaded, liveFailed, liveProfile, record]);
+  }, [user, liveLoaded, liveFailed, liveProfile, record, isPending]);
 
   async function handleSave() {
     if (!user || !profile) return;
@@ -104,8 +111,18 @@ export function ProfilePage() {
     try {
       const isComplete =
         profile.displayName.trim() !== '' && profile.batchNumber !== null && profile.headline.trim() !== '';
-      await saveOwnProfile(user, { ...profile, isComplete });
-      await saveOwnProfileContact(user.uid, contact);
+      if (isPending) {
+        await saveOwnPendingProfile(user, {
+          ...profile,
+          batchNumber: record?.batchNumber ?? profile.batchNumber,
+          badges: [],
+          isComplete,
+        });
+        await saveOwnProfileContact(user.uid, contact, 'pending');
+      } else {
+        await saveOwnProfile(user, { ...profile, isComplete });
+        await saveOwnProfileContact(user.uid, contact);
+      }
       // The photo change is now really saved, so it is finally safe to
       // delete ImageKit assets that are no longer referenced: the
       // previously-saved photo (if replaced/removed) and any photo
@@ -143,18 +160,26 @@ export function ProfilePage() {
     return (
       <ProfileView
         profile={shown}
-        contactCaption="Fellow alumni will see"
         actions={
           <Button variant="secondary" onClick={() => setEditing(true)}>
             Edit profile
           </Button>
         }
+        contactCaption={isPending ? 'Your approvers will see' : 'Fellow alumni will see'}
         notice={
-          !profile.isComplete && (
+          isPending ? (
             <p className="rounded-lg bg-surface-soft p-md text-body-md text-body">
-              Your profile isn't complete yet. Add your name, batch and a headline so other alumni can find you in the
-              directory.
+              {profile.isComplete
+                ? 'Thanks — your profile has been submitted. Your batch representative (or an admin) will review it and confirm your alumni status. You can keep editing it until then.'
+                : "Your profile isn't complete yet. Add your name and a headline so your batch representative can recognise you."}
             </p>
+          ) : (
+            !profile.isComplete && (
+              <p className="rounded-lg bg-surface-soft p-md text-body-md text-body">
+                Your profile isn't complete yet. Add your name, batch and a headline so other alumni can find you in the
+                directory.
+              </p>
+            )
           )
         }
       />
@@ -197,7 +222,7 @@ export function ProfilePage() {
             className="mt-xs block w-full field"
           />
           <p className="mt-xs text-caption text-muted">
-            Shown to fellow alumni in the directory. You can update this any time — for example
+            Shown to fellow alumni in the directory once you're approved. You can update this any time — for example
             after a name change.
           </p>
         </div>
@@ -208,6 +233,7 @@ export function ProfilePage() {
           </label>
           <select
             id="batch"
+            disabled={isPending}
             value={profile.batchNumber ?? ''}
             onChange={(e) =>
               setProfile({
@@ -224,6 +250,11 @@ export function ProfilePage() {
               </option>
             ))}
           </select>
+          {isPending && (
+            <p className="mt-xs text-caption text-muted">
+              This is the batch you applied with — it decides which batch representative reviews you.
+            </p>
+          )}
         </div>
 
         <div>
@@ -317,10 +348,12 @@ export function ProfilePage() {
           </div>
         </div>
 
-        <BadgePicker
-          selected={profile.badges}
-          onChange={(badges) => setProfile({ ...profile, badges })}
-        />
+        {!isPending && (
+          <BadgePicker
+            selected={profile.badges}
+            onChange={(badges) => setProfile({ ...profile, badges })}
+          />
+        )}
 
         <div>
           <label className="text-label-md text-ink" htmlFor="website">
@@ -350,7 +383,7 @@ export function ProfilePage() {
             onClick={() => void handleSave()}
             disabled={saving || profile.displayName.trim() === ''}
           >
-            {saving ? 'Saving…' : 'Save profile'}
+            {saving ? 'Saving…' : isPending ? 'Submit profile' : 'Save profile'}
           </Button>
           {profile.isComplete && (
             <Button variant="secondary" onClick={() => setEditing(false)} disabled={saving}>

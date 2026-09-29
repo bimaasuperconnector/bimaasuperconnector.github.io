@@ -16,6 +16,11 @@ export function PendingPage() {
     return <Navigate to="/app" replace />;
   }
 
+  // Applicants (status pending) now set up their profile while they wait.
+  if (!authLoading && !recordLoading && record?.status === 'pending') {
+    return <Navigate to="/app/profile" replace />;
+  }
+
   if (authLoading || recordLoading) {
     return (
       <section className="py-section">

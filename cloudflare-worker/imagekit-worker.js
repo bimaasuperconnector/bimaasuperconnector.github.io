@@ -166,7 +166,10 @@ async function verifyFirebaseIdToken(idToken, projectId) {
 }
 
 /**
- * Confirms users/{uid}.status == "approved". The lookup is made with the
+ * Confirms users/{uid}.status is "approved" OR "pending". Applicants whose
+ * account is still awaiting review may upload a profile photo for their
+ * pending-approval profile so approvers can recognise them; a rejected
+ * account (or no account at all) may not. The lookup is made with the
  * CALLER'S OWN ID token, so Firestore's own security rules decide
  * whether it is allowed (a member can only ever read their own users
  * document) — the Worker needs no Firebase service-account key at all.
@@ -184,7 +187,8 @@ async function isApprovedMember(uid, idToken, projectId) {
   if (response.status === 404 || response.status === 403) return false;
   if (!response.ok) throw new HttpError(503, 'Could not check membership. Please try again.');
   const doc = await response.json();
-  return doc?.fields?.status?.stringValue === 'approved';
+  const status = doc?.fields?.status?.stringValue;
+  return status === 'approved' || status === 'pending';
 }
 
 /** Full gate shared by every route: config -> origin -> token -> approved. */
@@ -205,7 +209,7 @@ async function authenticate(request, env) {
   // that is not plain letters/digits (Google Sign-In uids always are).
   if (!/^[A-Za-z0-9]{1,128}$/.test(uid)) throw new HttpError(403, 'Not allowed.');
   if (!(await isApprovedMember(uid, idToken, env.FIREBASE_PROJECT_ID))) {
-    throw new HttpError(403, 'Only approved alumni can do this.');
+    throw new HttpError(403, 'Only alumni with an active or pending account can do this.');
   }
   return uid;
 }

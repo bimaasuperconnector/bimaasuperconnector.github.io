@@ -15,8 +15,11 @@ export function LoginPage() {
     if (record?.status === 'approved') {
       return <Navigate to="/app" replace />;
     }
+    if (record?.status === 'pending') {
+      return <Navigate to="/app/profile" replace />;
+    }
     if (record || needsOnboarding) {
-      // pending, rejected, or needs the onboarding form — all live on /pending.
+      // rejected, or needs the onboarding form — both live on /pending.
       return <Navigate to="/pending" replace />;
     }
   }

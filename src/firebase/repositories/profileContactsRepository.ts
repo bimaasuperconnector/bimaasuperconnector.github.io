@@ -60,9 +60,9 @@ function contactDocRef(uid: string) {
   return doc(db, 'profileContacts', uid);
 }
 
-function profileDocRef(uid: string) {
+function profileDocRef(uid: string, target: 'profile' | 'pending' = 'profile') {
   if (!db) throw new Error('Firestore is not configured.');
-  return doc(db, 'profiles', uid);
+  return doc(db, target === 'pending' ? 'pendingProfiles' : 'profiles', uid);
 }
 
 function fromSnapshot(data: DocumentData): ProfileContact {
@@ -108,7 +108,11 @@ function buildVisibleMap(contact: ProfileContact): ContactVisibleMap {
  * profile). Requires a `profiles/{uid}` document to already exist
  * (created via `saveOwnProfile` first) since this only patches it.
  */
-export async function saveOwnProfileContact(uid: string, contact: ProfileContact): Promise<void> {
+export async function saveOwnProfileContact(
+  uid: string,
+  contact: ProfileContact,
+  target: 'profile' | 'pending' = 'profile',
+): Promise<void> {
   const payload: Record<string, unknown> = {
     uid,
     ...contact,
@@ -128,7 +132,7 @@ export async function saveOwnProfileContact(uid: string, contact: ProfileContact
   const batch = writeBatch(db!);
   batch.set(contactDocRef(uid), payload, { merge: true });
   batch.set(
-    profileDocRef(uid),
+    profileDocRef(uid, target),
     { contactVisible: buildVisibleMap(contact), updatedAt: serverTimestamp() },
     { merge: true },
   );

@@ -2,6 +2,7 @@ import {
   type DocumentData,
   type QueryDocumentSnapshot,
   type Unsubscribe,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -247,6 +248,18 @@ function profileDocRef(uid: string) {
   return doc(db, 'profiles', uid);
 }
 
+/**
+ * The private profile a brand-new applicant fills in while waiting for
+ * approval. Deliberately a SEPARATE collection from `profiles`: the
+ * directory queries never filter on `approved`, so a pending person's
+ * data in `profiles` would leak into search. Only the applicant and the
+ * admin(s) governing their batch can read it — see firestore.rules.
+ */
+function pendingProfileDocRef(uid: string) {
+  if (!db) throw new Error('Firestore is not configured.');
+  return doc(db, 'pendingProfiles', uid);
+}
+
 function profilesCollection() {
   if (!db) throw new Error('Firestore is not configured.');
   return collection(db, 'profiles');
@@ -446,6 +459,52 @@ export function subscribeToProfile(
   );
 }
 
+/** Live listener on the applicant's own pending-approval profile. */
+export function subscribeToPendingProfile(
+  uid: string,
+  onChange: (profile: Profile | null) => void,
+  onError?: (error: Error) => void,
+): Unsubscribe {
+  return onSnapshot(
+    pendingProfileDocRef(uid),
+    (snapshot) => {
+      onChange(snapshot.exists() ? fromSnapshot(uid, snapshot.data()) : null);
+    },
+    onError,
+  );
+}
+
+/**
+ * One-off read of an applicant's pending profile — used by the approvers'
+ * console when an admin chooses to open an application (a single
+ * document read, only on demand). Firestore Rules restrict this to the
+ * applicant and the admin(s) governing their batch.
+ */
+export async function getPendingProfile(uid: string): Promise<Profile | null> {
+  const snapshot = await getDoc(pendingProfileDocRef(uid));
+  return snapshot.exists() ? fromSnapshot(uid, snapshot.data()) : null;
+}
+
+/**
+ * Called once for a member who has just been approved and has no
+ * `profiles/{uid}` yet: copies what they entered while pending into their
+ * real profile (so nothing they typed is lost), then removes the pending
+ * copy. Returns true if a profile was copied. Safe to call more than
+ * once — it does nothing if there is no pending profile.
+ */
+export async function promotePendingProfile(user: FirebaseUser): Promise<boolean> {
+  const snapshot = await getDoc(pendingProfileDocRef(user.uid));
+  if (!snapshot.exists()) return false;
+  const pending = fromSnapshot(user.uid, snapshot.data());
+  await saveOwnProfile(user, pending);
+  try {
+    await deleteDoc(pendingProfileDocRef(user.uid));
+  } catch {
+    // Best-effort cleanup only — a leftover pending copy is harmless.
+  }
+  return true;
+}
+
 /**
  * Create-or-update, always scoped to the caller's own uid by Firestore
  * Rules (see firestore.rules). Takes the signed-in `FirebaseUser` (not
@@ -458,8 +517,26 @@ export function subscribeToProfile(
  * not the security boundary.
  */
 export async function saveOwnProfile(user: FirebaseUser, fields: ProfileFormFields): Promise<void> {
+  await writeOwnProfile(user, fields, 'profile');
+}
+
+/**
+ * Same write as `saveOwnProfile`, but into the private
+ * `pendingProfiles/{uid}` document (approved: false) for a member whose
+ * application is still awaiting review. Never visible in the directory.
+ */
+export async function saveOwnPendingProfile(user: FirebaseUser, fields: ProfileFormFields): Promise<void> {
+  await writeOwnProfile(user, fields, 'pending');
+}
+
+async function writeOwnProfile(
+  user: FirebaseUser,
+  fields: ProfileFormFields,
+  target: 'profile' | 'pending',
+): Promise<void> {
   const uid = user.uid;
-  const existing = await getDoc(profileDocRef(uid));
+  const targetRef = target === 'pending' ? pendingProfileDocRef(uid) : profileDocRef(uid);
+  const existing = await getDoc(targetRef);
 
   // Phase 2/11 revision: `displayName` is now the owner-edited value in
   // `fields` (a real "Name" field in the Profile form), NOT re-derived
@@ -502,7 +579,7 @@ export async function saveOwnProfile(user: FirebaseUser, fields: ProfileFormFiel
     // true here — the create/update rules already independently require
     // callerIsApproved() (or admin) before this write is even allowed —
     // see firestore.rules for the known staleness tradeoff this implies.
-    approved: true,
+    approved: target === 'profile',
     updatedAt: serverTimestamp(),
   };
   if (!existing.exists()) {
@@ -515,7 +592,7 @@ export async function saveOwnProfile(user: FirebaseUser, fields: ProfileFormFiel
     throw new Error(`Unexpected profile fields: ${unexpected.join(', ')}`);
   }
 
-  await setDoc(profileDocRef(uid), payload, { merge: true });
+  await setDoc(targetRef, payload, { merge: true });
 }
 
 // --- Directory querying (Phase 3) ---
