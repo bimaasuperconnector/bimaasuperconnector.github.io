@@ -588,7 +588,7 @@ service cloud.firestore {
         && data.location is string && data.location.size() > 0 && data.location.size() <= 200
         && data.employmentType in ['full_time', 'part_time', 'contract', 'internship', 'freelance']
         && data.urgency in ['urgent', 'standard']
-        && data.description is string && data.description.size() > 0 && data.description.size() <= 3000
+        && data.description is string && data.description.size() > 0 && data.description.size() <= 10000
         && data.skills is list && data.skills.size() <= 20
         && data.experienceLevel is string && data.experienceLevel.size() <= 200
         && data.contactPerson is string && data.contactPerson.size() > 0 && data.contactPerson.size() <= 200
@@ -621,9 +621,15 @@ service cloud.firestore {
         || (callerIsApproved()
             && (resource.data.status == 'approved' || resource.data.postedByUid == request.auth.uid));
 
+      // Publish-first model (2026-09-29): any approved member's new
+      // posting goes live immediately as 'approved'. There is no
+      // pre-approval queue any more; admins only get involved when a
+      // member REPORTS a posting (see `reports` below). 'pending'
+      // stays in the allowed status enum purely so older documents
+      // created under the previous review-first flow still validate.
       allow create: if callerIsApproved()
         && request.resource.data.postedByUid == request.auth.uid
-        && request.resource.data.status == 'pending'
+        && request.resource.data.status == 'approved'
         && request.resource.data.expirationDate > request.time
         && isValidJobShape(request.resource.data);
 

@@ -20,6 +20,8 @@ export interface Notification {
   cycleId: string | null;
   /** Present on Phase 13 event-related notifications instead of cycleId — see automation/src/notifications.ts' createEventNotification(). */
   eventId: string | null;
+  /** Set only on the synthetic "new job posted" items the bell derives from the jobs collection (never stored per member). */
+  jobId?: string | null;
   read: boolean;
   createdAt: Date | null;
 }

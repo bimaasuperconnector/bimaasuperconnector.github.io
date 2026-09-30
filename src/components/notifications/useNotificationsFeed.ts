@@ -5,6 +5,10 @@ import {
   countNotificationsSince,
   listOwnNotifications,
 } from '../../firebase/repositories/notificationsRepository';
+import {
+  countNewJobsFromOthers,
+  listRecentJobsForFeed,
+} from '../../firebase/repositories/jobsRepository';
 
 /**
  * Header-bell state: an unread badge plus a lazily-loaded feed.
@@ -40,6 +44,55 @@ function readSeen(uid: string): Date | null {
   }
 }
 
+function jobsSeenKey(uid: string) {
+  return `sc:jobs-seen:${uid}`;
+}
+
+/** Baseline for "new jobs". First ever visit on a device starts from now, so nobody is flooded with old postings. */
+function readJobsSeen(uid: string): Date {
+  try {
+    const raw = window.localStorage.getItem(jobsSeenKey(uid));
+    const date = raw ? new Date(raw) : null;
+    if (date && !Number.isNaN(date.getTime())) return date;
+    const now = new Date();
+    window.localStorage.setItem(jobsSeenKey(uid), now.toISOString());
+    return now;
+  } catch {
+    return new Date();
+  }
+}
+
+function writeJobsSeen(uid: string, date: Date) {
+  try {
+    window.localStorage.setItem(jobsSeenKey(uid), date.toISOString());
+  } catch {
+    // ignore — badge just won't persist
+  }
+}
+
+/**
+ * Device-level heads-up (only when the member already granted the
+ * browser's notification permission and the app is open or backgrounded).
+ * True closed-app push would need Firebase Cloud Messaging — a separate,
+ * not-yet-approved architecture item (see CLAUDE.md section 14).
+ */
+function showJobsDeviceNotification(count: number) {
+  try {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    const title = count === 1 ? 'New job posted' : `${count} new jobs posted`;
+    const options = { body: 'Tap to see the latest openings on SuperConnector.', tag: 'sc-new-jobs' };
+    if ('serviceWorker' in navigator) {
+      void navigator.serviceWorker.ready
+        .then((reg) => reg.showNotification(title, options))
+        .catch(() => new Notification(title, options));
+    } else {
+      new Notification(title, options);
+    }
+  } catch {
+    // best-effort only
+  }
+}
+
 function writeSeen(uid: string, date: Date) {
   try {
     window.localStorage.setItem(seenKey(uid), date.toISOString());
@@ -62,14 +115,22 @@ export function useNotificationsFeed(uid: string | undefined) {
   const loadedAt = useRef(0);
   const checkedAt = useRef(0);
 
+  const lastJobCount = useRef(0);
+
   const checkUnread = useCallback(async () => {
     if (!uid) return;
     checkedAt.current = Date.now();
-    try {
-      setUnread(await countNotificationsSince(uid, readSeen(uid)));
-    } catch {
-      // A failed badge check is silent — the bell simply shows no badge.
-    }
+    // Personal notifications (1 count read) and new jobs from others
+    // (2 count reads) are independent: one failing must not blank the other.
+    const [personal, jobs] = await Promise.allSettled([
+      countNotificationsSince(uid, readSeen(uid)),
+      countNewJobsFromOthers(uid, readJobsSeen(uid)),
+    ]);
+    const personalCount = personal.status === 'fulfilled' ? personal.value : 0;
+    const jobCount = jobs.status === 'fulfilled' ? jobs.value : 0;
+    setUnread(personalCount + jobCount);
+    if (jobCount > lastJobCount.current) showJobsDeviceNotification(jobCount);
+    lastJobCount.current = jobCount;
   }, [uid]);
 
   useEffect(() => {
@@ -92,8 +153,29 @@ export function useNotificationsFeed(uid: string | undefined) {
     setLoading(true);
     setError(null);
     try {
-      const page = await listOwnNotifications(uid, NOTIFICATIONS_PAGE_SIZE);
-      setItems(page);
+      const [page, recentJobs] = await Promise.all([
+        listOwnNotifications(uid, NOTIFICATIONS_PAGE_SIZE),
+        // A failed jobs lookup must never hide the member's own notifications.
+        listRecentJobsForFeed(5).catch(() => []),
+      ]);
+      const jobItems: Notification[] = recentJobs
+        .filter((j) => j.postedByUid !== uid)
+        .map((j) => ({
+          id: `job_${j.id}`,
+          type: 'job_posted',
+          title: 'New job posted',
+          body: `${j.title} at ${j.company} · ${j.location}`,
+          cycleId: null,
+          eventId: null,
+          jobId: j.id,
+          read: false,
+          createdAt: j.createdAt,
+        }));
+      const merged = [...page, ...jobItems].sort(
+        (a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0),
+      );
+      setItems(merged);
+      // Paging cursor is based on personal notifications only; job items are a bounded extra.
       setHasMore(page.length === NOTIFICATIONS_PAGE_SIZE);
       loadedAt.current = Date.now();
     } catch {
@@ -108,14 +190,17 @@ export function useNotificationsFeed(uid: string | undefined) {
     if (!uid) return;
     setHighlightSince(readSeen(uid));
     setHasHighlightBaseline(true);
-    writeSeen(uid, new Date());
+    const now = new Date();
+    writeSeen(uid, now);
+    writeJobsSeen(uid, now);
+    lastJobCount.current = 0;
     setUnread(0);
     if (Date.now() - loadedAt.current > REFRESH_MS) void load();
   }, [uid, load]);
 
   const loadMore = useCallback(async () => {
     if (!uid || items.length === 0) return;
-    const last = items[items.length - 1].createdAt;
+    const last = [...items].reverse().find((n) => !n.jobId)?.createdAt;
     if (!last) return;
     setLoadingMore(true);
     try {

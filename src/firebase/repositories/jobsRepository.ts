@@ -5,6 +5,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  getCountFromServer,
   getDoc,
   getDocs,
   limit as fsLimit,
@@ -117,7 +118,9 @@ export async function createJob(user: FirebaseUser, fields: JobFormFields): Prom
     postedByDisplayName: user.displayName ?? '',
     ...fields,
     expirationDate: Timestamp.fromDate(fields.expirationDate),
-    status: 'pending',
+    // Publish-first: goes live immediately. Admins only review a posting
+    // if a member reports it (see reportsRepository / firestore.rules).
+    status: 'approved',
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   };
@@ -181,14 +184,47 @@ export async function getJob(jobId: string): Promise<Job | null> {
   return snapshot.exists() ? fromSnapshot(jobId, snapshot.data()) : null;
 }
 
-/** Admin moderation queue. */
-export async function queryPendingJobs(): Promise<Job[]> {
-  const snapshot = await getDocs(
-    query(jobsCollection(), where('status', '==', 'pending'), orderBy('createdAt', 'desc')),
-  );
-  return snapshot.docs.map((d) => fromSnapshot(d.id, d.data()));
-}
+/** Max description length. Mirrored in firestore.rules' isValidJobShape(). */
+export const JOB_DESCRIPTION_MAX = 10000;
 
+/** Admin action on a REPORTED posting: 'rejected' takes it off the board (the poster still sees it in "Your postings"). */
 export async function setJobStatus(jobId: string, status: 'approved' | 'rejected'): Promise<void> {
   await updateDoc(jobDocRef(jobId), { status, updatedAt: serverTimestamp() });
+}
+
+/** How far back the bell considers a job "new" for members who have never opened it before. */
+export const JOB_FEED_WINDOW_DAYS = 14;
+
+/**
+ * Bell badge: how many jobs OTHER members posted since `since`.
+ *
+ * Two count() aggregations = about 2 billed reads per check, however many
+ * jobs exist. No fan-out: a posting is ONE document write, not a write per
+ * member (10,000 per-member notification documents for every posting would
+ * burn the free write quota within a couple of jobs). Both counts use
+ * composite indexes that already exist: (status, createdAt) and
+ * (postedByUid, createdAt).
+ */
+export async function countNewJobsFromOthers(uid: string, since: Date): Promise<number> {
+  const ts = Timestamp.fromDate(since);
+  const [all, mine] = await Promise.all([
+    getCountFromServer(query(jobsCollection(), where('status', '==', 'approved'), where('createdAt', '>', ts))),
+    getCountFromServer(query(jobsCollection(), where('postedByUid', '==', uid), where('createdAt', '>', ts))),
+  ]);
+  return Math.max(0, all.data().count - mine.data().count);
+}
+
+/** Newest few approved postings for the bell feed (bounded; only fetched when the bell is opened). */
+export async function listRecentJobsForFeed(max = 5): Promise<Job[]> {
+  const since = Timestamp.fromDate(new Date(Date.now() - JOB_FEED_WINDOW_DAYS * 24 * 60 * 60 * 1000));
+  const snapshot = await getDocs(
+    query(
+      jobsCollection(),
+      where('status', '==', 'approved'),
+      where('createdAt', '>', since),
+      orderBy('createdAt', 'desc'),
+      fsLimit(max),
+    ),
+  );
+  return snapshot.docs.map((d) => fromSnapshot(d.id, d.data()));
 }

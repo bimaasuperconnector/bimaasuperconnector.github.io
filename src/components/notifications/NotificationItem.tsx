@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import type { Notification } from '../../firebase/repositories/notificationsRepository';
 import { formatRelative } from '../../lib/time';
-import { EventsIcon, NotificationsIcon, SuperConnectorIcon } from '../icons/NavIcons';
+import { EventsIcon, JobsIcon, NotificationsIcon, SuperConnectorIcon } from '../icons/NavIcons';
 
 /** One notification row, shared by the header pane, the Home preview and the full page. */
 export function NotificationItem({
@@ -13,8 +13,20 @@ export function NotificationItem({
   isNew?: boolean;
   onNavigate?: () => void;
 }) {
-  const target = notification.eventId ? '/app/events' : notification.cycleId ? '/app/superconnector' : null;
-  const Icon = notification.eventId ? EventsIcon : notification.cycleId ? SuperConnectorIcon : NotificationsIcon;
+  const target = notification.jobId
+    ? '/app/jobs'
+    : notification.eventId
+      ? '/app/events'
+      : notification.cycleId
+        ? '/app/superconnector'
+        : null;
+  const Icon = notification.jobId
+    ? JobsIcon
+    : notification.eventId
+      ? EventsIcon
+      : notification.cycleId
+        ? SuperConnectorIcon
+        : NotificationsIcon;
 
   const content = (
     <>

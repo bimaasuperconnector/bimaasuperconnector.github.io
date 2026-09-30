@@ -4,7 +4,6 @@ import { db } from '../init';
 export interface AdminMetrics {
   pendingApprovals: number;
   approvedMembers: number;
-  pendingJobs: number;
   approvedJobs: number;
   openToWorkCount: number;
   founderCount: number;
@@ -26,7 +25,6 @@ export async function loadAdminMetrics(): Promise<AdminMetrics> {
   const [
     pendingApprovals,
     approvedMembers,
-    pendingJobs,
     approvedJobs,
     openToWorkCount,
     founderCount,
@@ -34,7 +32,6 @@ export async function loadAdminMetrics(): Promise<AdminMetrics> {
   ] = await Promise.all([
     getCountFromServer(query(collection(db, 'users'), where('status', '==', 'pending'))),
     getCountFromServer(query(collection(db, 'users'), where('status', '==', 'approved'))),
-    getCountFromServer(query(collection(db, 'jobs'), where('status', '==', 'pending'))),
     getCountFromServer(query(collection(db, 'jobs'), where('status', '==', 'approved'))),
     getCountFromServer(query(collection(db, 'profiles'), where('openToWork', '==', true))),
     getCountFromServer(query(collection(db, 'profiles'), where('hasFounderOrg', '==', true))),
@@ -44,7 +41,6 @@ export async function loadAdminMetrics(): Promise<AdminMetrics> {
   return {
     pendingApprovals: pendingApprovals.data().count,
     approvedMembers: approvedMembers.data().count,
-    pendingJobs: pendingJobs.data().count,
     approvedJobs: approvedJobs.data().count,
     openToWorkCount: openToWorkCount.data().count,
     founderCount: founderCount.data().count,

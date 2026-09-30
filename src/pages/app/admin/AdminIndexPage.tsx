@@ -11,12 +11,7 @@ import {
   setUserStatus,
   subscribeToPendingUsers,
 } from '../../../firebase/repositories/usersRepository';
-import {
-  EMPLOYMENT_TYPE_LABELS,
-  type Job,
-  queryPendingJobs,
-  setJobStatus,
-} from '../../../firebase/repositories/jobsRepository';
+import { EMPLOYMENT_TYPE_LABELS, type Job, getJob, setJobStatus } from '../../../firebase/repositories/jobsRepository';
 import { type AdminMetrics, loadAdminMetrics } from '../../../firebase/repositories/adminMetricsRepository';
 import { type Report, queryOpenReports, setReportStatus } from '../../../firebase/repositories/reportsRepository';
 import { type AuditLogEntry, queryRecentAuditLogs } from '../../../firebase/repositories/auditLogsRepository';
@@ -54,7 +49,6 @@ function MetricsDashboard() {
         ['Approved members', metrics.approvedMembers],
         ['Pending approvals', metrics.pendingApprovals],
         ['Approved job postings', metrics.approvedJobs],
-        ['Pending job postings', metrics.pendingJobs],
         ['Open to Work', metrics.openToWorkCount],
         ['Founders', metrics.founderCount],
         ['Open reports', metrics.openReports],
@@ -98,10 +92,77 @@ const REPORT_REASON_LABELS: Record<string, string> = {
   other: 'Other',
 };
 
+/**
+ * A reported job posting, loaded on demand. Nothing is fetched until an
+ * admin clicks "View posting" (one document read per click), so a long
+ * report queue costs no extra reads up front.
+ */
+function ReportedJobPanel({
+  jobId,
+  busy,
+  onRemoveAndResolve,
+}: {
+  jobId: string;
+  busy: boolean;
+  onRemoveAndResolve: () => void;
+}) {
+  const [job, setJob] = useState<Job | null | undefined>(undefined);
+  const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  async function show() {
+    setLoading(true);
+    setFailed(false);
+    try {
+      setJob(await getJob(jobId));
+    } catch {
+      setFailed(true);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (job === undefined) {
+    return (
+      <div className="mt-sm">
+        <Button variant="secondary" className="px-md py-xs" disabled={loading} onClick={() => void show()}>
+          {loading ? 'Loading…' : 'View posting'}
+        </Button>
+        {failed && <p className="mt-xs text-caption text-signature-coral">Couldn't load that posting.</p>}
+      </div>
+    );
+  }
+
+  if (job === null) {
+    return <p className="mt-sm text-body-md text-muted">This posting no longer exists (the poster may have withdrawn it).</p>;
+  }
+
+  return (
+    <div className="mt-sm rounded-lg border border-hairline bg-canvas p-md">
+      <p className="text-label-md text-ink">{job.title}</p>
+      <p className="text-body-md text-muted">
+        {job.company} · {job.location} · {EMPLOYMENT_TYPE_LABELS[job.employmentType]} · posted by {job.postedByDisplayName}
+      </p>
+      <p className="copy mt-xs max-h-60 overflow-y-auto whitespace-pre-line">{job.description}</p>
+      <p className="mt-xs text-body-md text-body [overflow-wrap:anywhere]">
+        {job.contactPerson} · {job.contactDetails}
+      </p>
+      {job.status === 'approved' ? (
+        <Button variant="primary" className="mt-sm px-md py-xs" disabled={busy} onClick={onRemoveAndResolve}>
+          Remove posting &amp; resolve
+        </Button>
+      ) : (
+        <p className="mt-sm text-caption text-muted">Status: {job.status} — not shown on the Jobs board.</p>
+      )}
+    </div>
+  );
+}
+
 function ReportsQueue() {
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
   const [actioningId, setActioningId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     queryOpenReports()
@@ -109,11 +170,15 @@ function ReportsQueue() {
       .finally(() => setLoading(false));
   }, []);
 
-  async function resolve(id: string, status: 'resolved' | 'dismissed') {
+  async function resolve(id: string, status: 'resolved' | 'dismissed', removeJobId?: string) {
     setActioningId(id);
+    setError(null);
     try {
+      if (removeJobId) await setJobStatus(removeJobId, 'rejected');
       await setReportStatus(id, status);
       setReports((prev) => prev.filter((r) => r.id !== id));
+    } catch {
+      setError("Couldn't update that report. Please try again.");
     } finally {
       setActioningId(null);
     }
@@ -122,9 +187,14 @@ function ReportsQueue() {
   return (
     <AdminSection id="reports" title="Reports">
       <p className="copy">
-        Job postings flagged by fellow alumni. Resolving or dismissing a report doesn't remove the posting itself —
-        use the pending/approved job tools below for that.
+        Job postings go live as soon as they're posted; they only reach you here if a member flags them. Open the
+        posting to review it, then remove it or dismiss the report.
       </p>
+      {error && (
+        <div className="mt-md">
+          <ErrorNote>{error}</ErrorNote>
+        </div>
+      )}
       {loading ? (
         <div className="mt-lg">
           <SkeletonList count={2} heightClass="h-16" />
@@ -138,9 +208,16 @@ function ReportsQueue() {
           {reports.map((r) => (
             <li key={r.id} className="rounded-lg bg-surface-soft p-md">
               <p className="text-label-md text-ink">
-                {REPORT_REASON_LABELS[r.reason] ?? r.reason} · {r.targetType} {r.targetId}
+                {REPORT_REASON_LABELS[r.reason] ?? r.reason} · {r.targetType}
               </p>
               {r.note && <p className="mt-xs text-body-md text-body">"{r.note}"</p>}
+              {r.targetType === 'job' && (
+                <ReportedJobPanel
+                  jobId={r.targetId}
+                  busy={actioningId === r.id}
+                  onRemoveAndResolve={() => void resolve(r.id, 'resolved', r.targetId)}
+                />
+              )}
               <div className="mt-sm flex flex-wrap gap-sm">
                 <Button
                   variant="secondary"
@@ -151,7 +228,7 @@ function ReportsQueue() {
                   Dismiss
                 </Button>
                 <Button
-                  variant="primary"
+                  variant="secondary"
                   className="px-md py-xs"
                   disabled={actioningId === r.id}
                   onClick={() => void resolve(r.id, 'resolved')}
@@ -413,28 +490,6 @@ export function AdminIndexPage() {
   const [actioningUid, setActioningUid] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const [pendingJobs, setPendingJobs] = useState<Job[]>([]);
-  const [jobsLoading, setJobsLoading] = useState(true);
-  const [actioningJobId, setActioningJobId] = useState<string | null>(null);
-
-  useEffect(() => {
-    queryPendingJobs()
-      .then(setPendingJobs)
-      .finally(() => setJobsLoading(false));
-  }, []);
-
-  async function handleJobDecision(jobId: string, status: 'approved' | 'rejected') {
-    setActioningJobId(jobId);
-    try {
-      await setJobStatus(jobId, status);
-      setPendingJobs((prev) => prev.filter((j) => j.id !== jobId));
-    } catch {
-      setError("Couldn't update that job posting.");
-    } finally {
-      setActioningJobId(null);
-    }
-  }
-
   useEffect(() => {
     // A batch_admin's console view is scoped to their own assigned
     // batches — display-only filtering; the real security boundary is
@@ -475,7 +530,6 @@ export function AdminIndexPage() {
     ['segments', 'Segments'],
     ['automation', 'Automation'],
     ['approvals', 'Approvals'],
-    ['jobs', 'Jobs'],
   ];
 
   return (
@@ -575,55 +629,6 @@ export function AdminIndexPage() {
                 </li>
               );
             })}
-          </ul>
-        )}
-      </AdminSection>
-
-      <AdminSection id="jobs" title="Pending job postings">
-        <p className="copy">New job postings wait here until approved, then appear on the Jobs board.</p>
-
-        {jobsLoading ? (
-          <div className="mt-lg">
-            <SkeletonList count={2} heightClass="h-24" />
-          </div>
-        ) : pendingJobs.length === 0 ? (
-          <div className="mt-lg">
-            <EmptyState title="No pending job postings right now" />
-          </div>
-        ) : (
-          <ul className="mt-lg space-y-md">
-            {pendingJobs.map((job) => (
-              <li key={job.id} className="rounded-lg bg-surface-soft p-md">
-                <div className="flex flex-wrap items-start justify-between gap-md">
-                  <div className="min-w-0">
-                    <p className="text-label-md text-ink">{job.title}</p>
-                    <p className="text-body-md text-muted">
-                      {job.company} · {job.location} · {EMPLOYMENT_TYPE_LABELS[job.employmentType]}
-                    </p>
-                    <p className="copy mt-xs">{job.description}</p>
-                    <p className="mt-xs text-caption text-muted">Posted by {job.postedByDisplayName}</p>
-                  </div>
-                  <div className="flex shrink-0 gap-sm">
-                    <Button
-                      variant="secondary"
-                      className="px-md py-xs"
-                      disabled={actioningJobId === job.id}
-                      onClick={() => void handleJobDecision(job.id, 'rejected')}
-                    >
-                      Reject
-                    </Button>
-                    <Button
-                      variant="primary"
-                      className="px-md py-xs"
-                      disabled={actioningJobId === job.id}
-                      onClick={() => void handleJobDecision(job.id, 'approved')}
-                    >
-                      Approve
-                    </Button>
-                  </div>
-                </div>
-              </li>
-            ))}
           </ul>
         )}
       </AdminSection>

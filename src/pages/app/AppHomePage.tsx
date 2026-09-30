@@ -173,7 +173,7 @@ export function AppHomePage() {
           <dl className="mt-md grid grid-cols-2 gap-sm sm:grid-cols-4">
             {[
               ['Pending approvals', adminMetrics.pendingApprovals],
-              ['Pending jobs', adminMetrics.pendingJobs],
+              ['Active jobs', adminMetrics.approvedJobs],
               ['Open reports', adminMetrics.openReports],
               ['Approved members', adminMetrics.approvedMembers],
             ].map(([label, value]) => (
