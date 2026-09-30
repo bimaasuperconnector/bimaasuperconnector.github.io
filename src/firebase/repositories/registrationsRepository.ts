@@ -44,15 +44,21 @@ export async function getOwnRegistration(
  * independently verify this matches the document's own `cycleId`/`uid`
  * fields, so a client can't register itself under someone else's uid or
  * smuggle a mismatched cycleId into the ID.
+ *
+ * Quota: the SuperConnector page has already read this registration when
+ * it opened, so it passes `alreadyRegistered` and this becomes a single
+ * write with no extra read. Callers that don't know fall back to one
+ * getDoc to decide whether `createdAt` should be set.
  */
 export async function saveOwnRegistration(
   uid: string,
   cycleId: string,
   slot: RegistrationSlot,
   mode: RegistrationMode,
+  alreadyRegistered?: boolean,
 ): Promise<void> {
   const ref = registrationDocRef(cycleId, uid);
-  const existing = await getDoc(ref);
+  const exists = alreadyRegistered ?? (await getDoc(ref)).exists();
   const payload: Record<string, unknown> = {
     uid,
     cycleId,
@@ -60,7 +66,7 @@ export async function saveOwnRegistration(
     mode,
     updatedAt: serverTimestamp(),
   };
-  if (!existing.exists()) {
+  if (!exists) {
     payload.createdAt = serverTimestamp();
   }
   await setDoc(ref, payload, { merge: true });

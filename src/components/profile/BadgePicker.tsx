@@ -37,7 +37,7 @@ export function BadgePicker({ selected, onChange }: BadgePickerProps) {
   }
 
   if (loading) {
-    return <p className="text-body-md text-muted">Loading badges…</p>;
+    return <p className="text-body-md text-muted">Loading club and committee badges…</p>;
   }
 
   if (catalog.length === 0) {
@@ -47,7 +47,7 @@ export function BadgePicker({ selected, onChange }: BadgePickerProps) {
   return (
     <div>
       <label className="text-label-md text-ink">
-        Badges ({selected.length}/{MAX_PROFILE_BADGES})
+        Wear your Club/Committee badge ({selected.length}/{MAX_PROFILE_BADGES})
       </label>
       <p className="mt-xs text-caption text-muted">Pick up to {MAX_PROFILE_BADGES} to show on your profile.</p>
       <div className="mt-xs flex flex-wrap gap-xs">

@@ -6,9 +6,11 @@ interface TagInputProps {
   values: string[];
   onChange: (values: string[]) => void;
   maxTags?: number;
+  /** Optional helper line shown between the label and the field. */
+  hint?: string;
 }
 
-export function TagInput({ label, placeholder, values, onChange, maxTags = 20 }: TagInputProps) {
+export function TagInput({ label, placeholder, values, onChange, maxTags = 20, hint }: TagInputProps) {
   const [draft, setDraft] = useState('');
 
   function commitDraft() {
@@ -39,7 +41,8 @@ export function TagInput({ label, placeholder, values, onChange, maxTags = 20 }:
   return (
     <div>
       <label className="text-label-md text-ink">{label}</label>
-      <div className="mt-xs flex flex-wrap gap-xs rounded-sm border border-hairline p-sm">
+      {hint && <p className="mt-xxs text-caption text-muted">{hint}</p>}
+      <div className="mt-xs flex flex-wrap gap-xs rounded-sm border border-hairline p-sm transition-colors duration-150 focus-within:border-info-border focus-within:ring-2 focus-within:ring-info-border/25">
         {values.map((tag) => (
           <span
             key={tag}
@@ -63,7 +66,7 @@ export function TagInput({ label, placeholder, values, onChange, maxTags = 20 }:
           onKeyDown={handleKeyDown}
           onBlur={commitDraft}
           placeholder={values.length === 0 ? placeholder : ''}
-          className="min-w-[120px] flex-1 border-none text-body-md text-ink outline-none"
+          className="min-h-[28px] min-w-[120px] flex-1 border-none bg-transparent text-body-md text-ink outline-none focus-visible:outline-none"
         />
       </div>
     </div>

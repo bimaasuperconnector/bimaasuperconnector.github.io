@@ -301,3 +301,35 @@ export function GlobeIcon(props: IconProps) {
     </svg>
   );
 }
+
+/** Two people facing each other — the One-to-One format. */
+export function OneToOneIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <circle cx="7.5" cy="9" r="2.75" />
+      <circle cx="16.5" cy="9" r="2.75" />
+      <path d="M3 19c.6-2.8 2.4-4.25 4.5-4.25S11.4 16.2 12 19M12 19c.6-2.8 2.4-4.25 4.5-4.25S20.4 16.2 21 19" />
+    </svg>
+  );
+}
+
+/** Several people around a ring — the Small Circle format. */
+export function SmallCircleIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <circle cx="12" cy="12" r="6.5" strokeDasharray="2 3" />
+      <circle cx="12" cy="4.5" r="2" />
+      <circle cx="19" cy="14.5" r="2" />
+      <circle cx="5" cy="14.5" r="2" />
+    </svg>
+  );
+}
+
+export function PencilIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M4.5 19.5 5.3 15 15.8 4.5a1.8 1.8 0 0 1 2.5 0l1.2 1.2a1.8 1.8 0 0 1 0 2.5L9 18.7l-4.5.8Z" />
+      <path d="m14 6.3 3.7 3.7" />
+    </svg>
+  );
+}

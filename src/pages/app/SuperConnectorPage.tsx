@@ -1,21 +1,22 @@
-import { useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { Button } from '../../components/ui/Button';
-import { CheckIcon, ClockIcon, UsersIcon } from '../../components/icons/NavIcons';
-import { ErrorNote, PageHeader, SkeletonList } from '../../components/ui/PageHeader';
+import { useOwnProfile } from '../../context/OwnProfileContext';
+import { Button, RouterLinkButton } from '../../components/ui/Button';
+import { CheckIcon, ClockIcon, OneToOneIcon, SmallCircleIcon } from '../../components/icons/NavIcons';
+import { ErrorNote, SkeletonList } from '../../components/ui/PageHeader';
+import { ChoiceTile } from '../../components/superconnector/ChoiceTile';
+import { SuperConnectorPrefsCard } from '../../components/superconnector/SuperConnectorPrefsCard';
 import {
   MODE_LABELS,
-  REGISTRATION_MODES,
-  REGISTRATION_SLOTS,
   SLOT_LABELS,
   SMALL_CIRCLE_MAX,
   SMALL_CIRCLE_MIN,
-  SMALL_CIRCLE_TARGET,
+  computeCycleSchedule,
   currentCycle,
-  formatCycleDates,
   type RegistrationMode,
   type RegistrationSlot,
 } from '../../lib/cycles';
+import { hasCompletePrefs } from '../../lib/superconnectorPrefs';
 import {
   type Registration,
   getOwnRegistration,
@@ -25,58 +26,69 @@ import {
 import { getCycleState } from '../../firebase/repositories/cyclesRepository';
 import { PendingFeedback } from '../../components/superconnector/PendingFeedback';
 
-/** One selectable option, styled as a bordered card rather than a bare radio. */
-function OptionCard({
-  checked,
-  disabled,
-  onSelect,
+/** A numbered step: the form really is a sequence (details, day, format). */
+function Step({
+  number,
   title,
   hint,
+  done,
+  children,
 }: {
-  checked: boolean;
-  disabled?: boolean;
-  onSelect: () => void;
+  number: number;
   title: string;
   hint?: string;
+  done?: boolean;
+  children: ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      role="radio"
-      aria-checked={checked}
-      disabled={disabled}
-      onClick={onSelect}
-      className={`flex min-h-[52px] w-full items-center justify-between gap-md rounded-lg border px-md py-sm text-left transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50 ${
-        checked ? 'border-primary bg-surface-soft' : 'border-hairline bg-canvas hover:bg-surface-soft'
-      }`}
-    >
-      <span>
-        <span className="block text-label-md text-ink">{title}</span>
-        {hint && <span className="block text-body-md text-muted">{hint}</span>}
-      </span>
-      <span
-        aria-hidden="true"
-        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${
-          checked ? 'border-primary bg-primary text-on-primary' : 'border-border-strong'
-        }`}
-      >
-        {checked && <CheckIcon width={12} height={12} />}
-      </span>
-    </button>
+    <section aria-labelledby={`sc-step-${number}`}>
+      <div className="flex items-start gap-sm">
+        <span
+          aria-hidden="true"
+          className={`mt-[2px] flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-body-md font-medium ${
+            done ? 'bg-signature-mint text-ink' : 'bg-surface-strong text-ink'
+          }`}
+        >
+          {done ? <CheckIcon width={16} height={16} strokeWidth={2.5} /> : number}
+        </span>
+        <div className="min-w-0">
+          <h2 id={`sc-step-${number}`} className="font-haas-disp text-title-md text-ink">
+            {title}
+          </h2>
+          {hint && <p className="mt-xxs text-body-md text-muted">{hint}</p>}
+        </div>
+      </div>
+      <div className="mt-md md:pl-[44px]">{children}</div>
+    </section>
   );
 }
 
+function DateBlock({ weekday, day }: { weekday: string; day: number }) {
+  return (
+    <div className="flex min-w-[96px] flex-col items-center rounded-lg bg-on-primary/10 px-lg py-md">
+      <span className="text-body-md text-on-primary/80">{weekday}</span>
+      <span className="font-haas-disp text-display-xl text-on-primary">{day}</span>
+    </div>
+  );
+}
+
+const DAY_FORMAT: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'long' };
+
 export function SuperConnectorPage() {
   const { user } = useAuth();
+  const { profile, loaded: profileLoaded, failed: profileFailed } = useOwnProfile();
   const cycle = currentCycle();
 
   const [registration, setRegistration] = useState<Registration | null>(null);
   const [registrationOpen, setRegistrationOpen] = useState(true);
   const [loading, setLoading] = useState(true);
   const [slot, setSlot] = useState<RegistrationSlot>('saturday');
-  const [mode, setMode] = useState<RegistrationMode>('one_to_one');
+  // Small Circle is the default format for a member who hasn't registered yet.
+  const [mode, setMode] = useState<RegistrationMode>('small_circle');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [editingPrefs, setEditingPrefs] = useState(false);
+  const [prefsInitialised, setPrefsInitialised] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -107,15 +119,43 @@ export function SuperConnectorPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
+  // Once the member's own profile has arrived (from the shell's single live
+  // listener, so no extra read), open the details card for editing only if
+  // something required is still blank.
+  useEffect(() => {
+    if (!profileLoaded || prefsInitialised) return;
+    setEditingPrefs(!hasCompletePrefs(profile));
+    setPrefsInitialised(true);
+  }, [profileLoaded, prefsInitialised, profile]);
+
+  const prefsSaved = hasCompletePrefs(profile);
+  const canChoose = registrationOpen && prefsSaved && !editingPrefs;
+  const dirty = !registration || registration.slot !== slot || registration.mode !== mode;
+
+  const satDate = cycle.saturday.toLocaleDateString(undefined, DAY_FORMAT);
+  const sunDate = cycle.sunday.toLocaleDateString(undefined, DAY_FORMAT);
+  const monthYear = cycle.saturday.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  const closesAt = computeCycleSchedule(cycle).registrationClosesAt.toLocaleString('en-IN', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZone: 'Asia/Kolkata',
+  });
+
+  const pickedDay =
+    slot === 'saturday' ? `Saturday ${satDate}` : slot === 'sunday' ? `Sunday ${sunDate}` : 'Saturday or Sunday';
+
   async function handleSave() {
     if (!user) return;
     setError(null);
     setSaving(true);
     try {
-      await saveOwnRegistration(user.uid, cycle.id, slot, mode);
+      await saveOwnRegistration(user.uid, cycle.id, slot, mode, registration !== null);
       setRegistration({ uid: user.uid, cycleId: cycle.id, slot, mode });
     } catch {
-      setError("Couldn't save your registration. Please try again.");
+      setError("Couldn't save your registration. Please refresh and try again.");
     } finally {
       setSaving(false);
     }
@@ -135,100 +175,188 @@ export function SuperConnectorPage() {
     }
   }
 
+  const ready = !loading && profileLoaded && prefsInitialised;
+
   return (
     <div className="space-y-lg">
-      <div className="surface-card p-lg md:p-xl">
-        <PageHeader
-          title="SuperConnector"
-          description={
-            <>
-              This month's connections happen the weekend of <strong className="text-ink">{formatCycleDates(cycle)}</strong>.
-              Register your availability and we'll match you with someone from the network closer to the date.
-            </>
-          }
-        />
-
-        {loading ? (
-          <div className="mt-lg">
-            <SkeletonList count={2} heightClass="h-14" />
+      {/* The one bold moment: the weekend itself. */}
+      <section className="rounded-lg bg-signature-forest p-lg text-on-primary md:p-xxl">
+        <div className="flex flex-wrap items-end justify-between gap-lg">
+          <div className="min-w-0 max-w-[46ch]">
+            <h1 className="font-haas-disp text-title-lg text-on-primary md:text-display-md">SuperConnector</h1>
+            <p className="mt-xs text-body-md text-on-primary/85" style={{ lineHeight: 1.55 }}>
+              One conversation a month with someone new from the network. Tell us a little about yourself, choose your
+              time and format, and we'll match you closer to the date.
+            </p>
           </div>
+          <div className="flex items-stretch gap-sm">
+            <DateBlock weekday="Saturday" day={cycle.saturday.getDate()} />
+            <DateBlock weekday="Sunday" day={cycle.sunday.getDate()} />
+          </div>
+        </div>
+        <div className="mt-lg flex flex-wrap items-center gap-x-lg gap-y-xs text-body-md text-on-primary/85">
+          <span>{monthYear}, 5:00–6:00 PM IST</span>
+          <span className="flex items-center gap-xs">
+            <ClockIcon width={16} height={16} />
+            {registrationOpen ? `Registration closes ${closesAt} IST` : 'Registration has closed for this weekend'}
+          </span>
+        </div>
+        {registration && (
+          <p className="mt-md inline-flex items-center gap-xs rounded-md bg-signature-mint px-md py-sm text-body-md text-ink">
+            <CheckIcon width={16} height={16} strokeWidth={2.5} />
+            You're registered for {MODE_LABELS[registration.mode]}, {SLOT_LABELS[registration.slot]}.
+          </p>
+        )}
+      </section>
+
+      <div className="surface-card p-lg md:p-xl">
+        {!ready ? (
+          <SkeletonList count={3} heightClass="h-24" />
         ) : (
-          <div className="mt-lg space-y-lg">
-            {registration && (
-              <p className="flex items-center gap-xs rounded-lg bg-signature-mint p-md text-body-md text-ink">
-                <CheckIcon width={16} height={16} /> You're registered for {SLOT_LABELS[registration.slot]} ·{' '}
-                {MODE_LABELS[registration.mode]}.
-              </p>
-            )}
+          <div className="space-y-xl">
+            {error && <ErrorNote>{error}</ErrorNote>}
+            {profileFailed && <ErrorNote>Couldn't load your profile. Please refresh.</ErrorNote>}
+
+            <Step
+              number={1}
+              title="Your details"
+              hint="Saved once and reused every month. Update them any time."
+              done={prefsSaved && !editingPrefs}
+            >
+              {profile && user ? (
+                <SuperConnectorPrefsCard
+                  user={user}
+                  profile={profile}
+                  editing={editingPrefs}
+                  onEditingChange={setEditingPrefs}
+                />
+              ) : (
+                <div className="rounded-lg bg-surface-soft p-md">
+                  <p className="copy">
+                    SuperConnector uses your profile to find the right person for you. Set up your profile first, then
+                    come back to finish these details.
+                  </p>
+                  <RouterLinkButton to="/app/profile" variant="secondary" className="mt-md !px-md !py-sm">
+                    Set up my profile
+                  </RouterLinkButton>
+                </div>
+              )}
+            </Step>
 
             {!registrationOpen && (
               <p className="flex items-start gap-xs rounded-lg bg-surface-soft p-md text-body-md text-body">
                 <ClockIcon width={16} height={16} className="mt-[2px] shrink-0" />
-                Registration for this cycle has closed — matching is starting soon.{' '}
-                {registration ? 'You can still withdraw if you need to.' : ''}
+                Registration for this weekend has closed. Matching is starting soon.
+                {registration ? ' You can still withdraw if you need to.' : ''}
               </p>
             )}
 
-            {error && <ErrorNote>{error}</ErrorNote>}
-
-            <div className={registrationOpen ? '' : 'pointer-events-none opacity-50'}>
-              <div role="radiogroup" aria-label="When are you available?">
-                <p className="text-label-md text-ink">When are you available?</p>
-                <div className="mt-sm space-y-xs">
-                  {REGISTRATION_SLOTS.map((s) => (
-                    <OptionCard
-                      key={s}
-                      checked={slot === s}
-                      disabled={!registrationOpen}
-                      onSelect={() => setSlot(s)}
-                      title={SLOT_LABELS[s]}
-                    />
-                  ))}
+            <div className={canChoose ? 'space-y-xl' : 'space-y-xl opacity-50'} aria-disabled={!canChoose}>
+              <Step
+                number={2}
+                title="When are you available?"
+                hint="Every conversation runs 5:00–6:00 PM IST."
+                done={Boolean(registration)}
+              >
+                <div role="radiogroup" aria-label="When are you available?" className="grid gap-sm sm:grid-cols-3">
+                  <ChoiceTile
+                    tone="pastel"
+                    checked={slot === 'saturday'}
+                    disabled={!canChoose}
+                    onSelect={() => setSlot('saturday')}
+                    title="Saturday"
+                    subtitle={satDate}
+                    detail="5:00–6:00 PM"
+                    swatchClass="bg-signature-peach"
+                    fillClass="bg-signature-peach"
+                  />
+                  <ChoiceTile
+                    tone="pastel"
+                    checked={slot === 'sunday'}
+                    disabled={!canChoose}
+                    onSelect={() => setSlot('sunday')}
+                    title="Sunday"
+                    subtitle={sunDate}
+                    detail="5:00–6:00 PM"
+                    swatchClass="bg-signature-mint"
+                    fillClass="bg-signature-mint"
+                  />
+                  <ChoiceTile
+                    tone="pastel"
+                    checked={slot === 'both'}
+                    disabled={!canChoose}
+                    onSelect={() => setSlot('both')}
+                    title="Both days"
+                    subtitle="Flexible. We pick the day that fits."
+                    detail="5:00–6:00 PM"
+                    swatchClass="bg-signature-yellow"
+                    fillClass="bg-signature-yellow"
+                  />
                 </div>
-              </div>
+              </Step>
 
-              <div role="radiogroup" aria-label="How would you like to connect?" className="mt-lg">
-                <p className="flex items-center gap-xs text-label-md text-ink">
-                  <UsersIcon width={16} height={16} /> How would you like to connect?
-                </p>
-                <div className="mt-sm space-y-xs">
-                  {REGISTRATION_MODES.map((m) => (
-                    <OptionCard
-                      key={m}
-                      checked={mode === m}
-                      disabled={!registrationOpen}
-                      onSelect={() => setMode(m)}
-                      title={MODE_LABELS[m]}
-                      hint={
-                        m === 'small_circle'
-                          ? `Target ${SMALL_CIRCLE_TARGET}, ${SMALL_CIRCLE_MIN}–${SMALL_CIRCLE_MAX} people`
-                          : undefined
-                      }
-                    />
-                  ))}
+              <Step number={3} title="How would you like to connect?" done={Boolean(registration)}>
+                <div role="radiogroup" aria-label="How would you like to connect?" className="grid gap-sm sm:grid-cols-2">
+                  <ChoiceTile
+                    tone="ink"
+                    checked={mode === 'small_circle'}
+                    disabled={!canChoose}
+                    onSelect={() => setMode('small_circle')}
+                    icon={<SmallCircleIcon width={22} height={22} />}
+                    title={MODE_LABELS.small_circle}
+                    subtitle="A relaxed group conversation"
+                    detail={`${SMALL_CIRCLE_MIN}–${SMALL_CIRCLE_MAX} people`}
+                  />
+                  <ChoiceTile
+                    tone="ink"
+                    checked={mode === 'one_to_one'}
+                    disabled={!canChoose}
+                    onSelect={() => setMode('one_to_one')}
+                    icon={<OneToOneIcon width={22} height={22} />}
+                    title={MODE_LABELS.one_to_one}
+                    subtitle="A focused chat with one person"
+                    detail="2 people"
+                  />
                 </div>
-              </div>
+              </Step>
             </div>
 
-            <div className="flex flex-wrap gap-md">
-              {registrationOpen && (
-                <Button variant="primary" onClick={() => void handleSave()} disabled={saving}>
-                  {saving ? 'Saving…' : registration ? 'Update registration' : 'Register'}
-                </Button>
-              )}
-              {registration && (
-                <Button variant="secondary" onClick={() => void handleWithdraw()} disabled={saving}>
-                  Withdraw
-                </Button>
-              )}
-            </div>
+            {(registrationOpen || registration) && (
+              <div className="sticky bottom-[calc(60px+env(safe-area-inset-bottom,0px))] z-30 -mx-lg flex flex-wrap items-center justify-between gap-md border-t border-hairline bg-canvas px-lg py-sm md:static md:mx-0 md:border-0 md:bg-transparent md:p-0 md:pl-[44px]">
+                {registrationOpen && canChoose ? (
+                  <p className="min-w-0 text-body-md text-body">
+                    <span className="font-medium text-ink">{MODE_LABELS[mode]}</span> on {pickedDay}
+                  </p>
+                ) : (
+                  <p className="min-w-0 text-body-md text-muted">
+                    {registrationOpen ? 'Save your details in step 1 to register.' : ''}
+                  </p>
+                )}
+                <div className="flex flex-wrap gap-sm">
+                  {registration && (
+                    <Button variant="secondary" onClick={() => void handleWithdraw()} disabled={saving}>
+                      Withdraw
+                    </Button>
+                  )}
+                  {registrationOpen && (
+                    <Button
+                      variant="primary"
+                      onClick={() => void handleSave()}
+                      disabled={saving || !canChoose || !dirty}
+                    >
+                      {saving ? 'Saving…' : registration ? 'Update registration' : 'Register'}
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
 
       <div className="surface-card p-lg md:p-xl">
         <h2 className="font-haas-disp text-title-md text-ink">Feedback on past connections</h2>
-        <p className="copy mt-xs">Your honest feedback helps future matching — it's never shown to the person you're rating.</p>
+        <p className="copy mt-xs">Your honest feedback helps future matching. It's never shown to the person you're rating.</p>
         <div className="mt-lg">
           <PendingFeedback />
         </div>

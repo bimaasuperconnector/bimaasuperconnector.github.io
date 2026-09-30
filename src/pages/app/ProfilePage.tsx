@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useOwnProfile } from '../../context/OwnProfileContext';
 import { useUserRecord } from '../../context/UserRecordContext';
 import { Button } from '../../components/ui/Button';
-import { TagInput } from '../../components/profile/TagInput';
 import { OrganizationsEditor } from '../../components/profile/OrganizationsEditor';
 import { EducationEditor } from '../../components/profile/EducationEditor';
 import { OpenToWorkEditor } from '../../components/profile/OpenToWorkEditor';
@@ -16,8 +16,6 @@ import { ErrorNote, SkeletonList } from '../../components/ui/PageHeader';
 import { allBatches } from '../../lib/batches';
 import {
   type Profile,
-  NETWORKING_PURPOSES,
-  NETWORKING_PURPOSE_LABELS,
   emptyProfile,
   saveOwnPendingProfile,
   saveOwnProfile,
@@ -112,16 +110,25 @@ export function ProfilePage() {
     try {
       const isComplete =
         profile.displayName.trim() !== '' && profile.batchNumber !== null && profile.headline.trim() !== '';
+      // Skills, networking interests and "what are you looking for" are edited
+      // on the SuperConnector page now. Always carry the latest saved values
+      // through so saving this form can never overwrite them with stale copies.
+      const toSave = {
+        ...profile,
+        skills: liveProfile?.skills ?? profile.skills,
+        interests: liveProfile?.interests ?? profile.interests,
+        networkingPurpose: liveProfile?.networkingPurpose ?? profile.networkingPurpose,
+      };
       if (isPending) {
         await saveOwnPendingProfile(user, {
-          ...profile,
+          ...toSave,
           batchNumber: record?.batchNumber ?? profile.batchNumber,
           badges: [],
           isComplete,
         });
         await saveOwnProfileContact(user.uid, contact, 'pending');
       } else {
-        await saveOwnProfile(user, { ...profile, isComplete });
+        await saveOwnProfile(user, { ...toSave, isComplete });
         await saveOwnProfileContact(user.uid, contact);
       }
       // The photo change is now really saved, so it is finally safe to
@@ -134,7 +141,7 @@ export function ProfilePage() {
       stale.forEach((fileId) => void deleteProfilePhotoAsset(user, fileId));
       savedPhotoFileId.current = profile.photoFileId;
       uploadedThisSession.current = new Set();
-      setProfile({ ...profile, isComplete });
+      setProfile({ ...toSave, isComplete });
       setEditing(false);
     } catch {
       setError("Couldn't save your profile. Please try again.");
@@ -312,42 +319,15 @@ export function ProfilePage() {
           onChange={(education) => setProfile({ ...profile, education })}
         />
 
-        <TagInput
-          label="Skills"
-          placeholder="Type a skill and press Enter"
-          values={profile.skills}
-          onChange={(skills) => setProfile({ ...profile, skills })}
-        />
-
-        <TagInput
-          label="Networking interests"
-          placeholder="Type a topic and press Enter"
-          values={profile.interests}
-          onChange={(interests) => setProfile({ ...profile, interests })}
-        />
-
-        <div>
-          <label className="text-label-md text-ink">What are you looking for?</label>
-          <div className="mt-xs space-y-xs">
-            {NETWORKING_PURPOSES.map((purpose) => (
-              <label key={purpose} className="flex items-center gap-xs text-body-md text-body">
-                <input
-                  type="checkbox"
-                  checked={profile.networkingPurpose.includes(purpose)}
-                  onChange={(e) =>
-                    setProfile({
-                      ...profile,
-                      networkingPurpose: e.target.checked
-                        ? [...profile.networkingPurpose, purpose]
-                        : profile.networkingPurpose.filter((p) => p !== purpose),
-                    })
-                  }
-                />
-                {NETWORKING_PURPOSE_LABELS[purpose]}
-              </label>
-            ))}
-          </div>
-        </div>
+        {!isPending && (
+          <p className="rounded-lg bg-surface-soft p-md text-body-md text-body">
+            Your skills, networking interests and what you're looking for now live in{' '}
+            <Link to="/app/superconnector" className="font-medium underline">
+              SuperConnector
+            </Link>
+            , where you set them once and reuse them every month.
+          </p>
+        )}
 
         {!isPending && <OpenToWorkEditor profile={profile} onChange={setProfile} />}
 

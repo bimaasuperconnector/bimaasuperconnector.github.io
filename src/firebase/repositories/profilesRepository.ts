@@ -595,15 +595,17 @@ export async function saveOwnPendingProfile(user: FirebaseUser, fields: ProfileF
   await writeOwnProfile(user, fields, 'pending');
 }
 
-async function writeOwnProfile(
+/**
+ * Builds the full profile document payload (all derived / denormalized
+ * fields included) from the owner-edited fields. Shared by every write
+ * path so the derived fields can never drift between them. Does NOT set
+ * `createdAt` — only the caller knows whether the document is new.
+ */
+function buildProfilePayload(
   user: FirebaseUser,
   fields: ProfileFormFields,
   target: 'profile' | 'pending',
-): Promise<void> {
-  const uid = user.uid;
-  const targetRef = target === 'pending' ? pendingProfileDocRef(uid) : profileDocRef(uid);
-  const existing = await getDoc(targetRef);
-
+): Record<string, unknown> {
   // Phase 2/11 revision: `displayName` is now the owner-edited value in
   // `fields` (a real "Name" field in the Profile form), NOT re-derived
   // from the live Google Auth displayName on every save — that
@@ -621,8 +623,8 @@ async function writeOwnProfile(
   // and is shown the built-in placeholder (components/ui/Avatar.tsx).
   // This also cleans out any Google URL a pre-upload profile still holds.
   const photoURL = fields.photoFileId ? fields.photoURL : null;
-  const payload: Record<string, unknown> = {
-    uid,
+  return {
+    uid: user.uid,
     ...fields,
     organizations: fields.organizations.map(cleanOrganization),
     photoURL,
@@ -649,17 +651,67 @@ async function writeOwnProfile(
     approved: target === 'profile',
     updatedAt: serverTimestamp(),
   };
-  if (!existing.exists()) {
-    payload.createdAt = serverTimestamp();
-  }
+}
 
-  const keys = Object.keys(payload);
-  const unexpected = keys.filter((key) => !ALLOWED_TOP_LEVEL_FIELDS.includes(key as never));
+function assertAllowedFields(payload: Record<string, unknown>): void {
+  const unexpected = Object.keys(payload).filter((key) => !ALLOWED_TOP_LEVEL_FIELDS.includes(key as never));
   if (unexpected.length > 0) {
     throw new Error(`Unexpected profile fields: ${unexpected.join(', ')}`);
   }
+}
 
+async function writeOwnProfile(
+  user: FirebaseUser,
+  fields: ProfileFormFields,
+  target: 'profile' | 'pending',
+): Promise<void> {
+  const targetRef = target === 'pending' ? pendingProfileDocRef(user.uid) : profileDocRef(user.uid);
+  const existing = await getDoc(targetRef);
+  const payload = buildProfilePayload(user, fields, target);
+  if (!existing.exists()) {
+    payload.createdAt = serverTimestamp();
+  }
+  assertAllowedFields(payload);
   await setDoc(targetRef, payload, { merge: true });
+}
+
+/** The three matching inputs a member keeps on the SuperConnector page. */
+export interface SuperConnectorPrefs {
+  skills: string[];
+  interests: string[];
+  networkingPurpose: NetworkingPurpose[];
+}
+
+/**
+ * Saves ONLY the SuperConnector inputs (skills, networking interests,
+ * what the member is looking for) onto their existing `profiles/{uid}`.
+ *
+ * Quota: exactly ONE write and ZERO reads. The caller passes the member's
+ * current profile straight from the shell's live listener
+ * (context/OwnProfileContext.tsx), so — unlike writeOwnProfile — there is
+ * no "does the document exist yet?" read. The whole document is rebuilt
+ * from that profile (rather than sending a 3-field patch) because
+ * firestore.rules validates the complete resulting document; rebuilding
+ * also quietly upgrades any older profile that predates newer fields.
+ *
+ * These inputs stay on the profile document on purpose: Directory
+ * skill/interest search, the profile view and the matching automation all
+ * already read them from there, so nothing else needed to change.
+ */
+export async function saveOwnSuperConnectorPrefs(
+  user: FirebaseUser,
+  current: Profile,
+  prefs: SuperConnectorPrefs,
+): Promise<void> {
+  const fields: ProfileFormFields = {
+    ...current,
+    skills: prefs.skills,
+    interests: prefs.interests,
+    networkingPurpose: prefs.networkingPurpose,
+  };
+  const payload = buildProfilePayload(user, fields, 'profile');
+  assertAllowedFields(payload);
+  await setDoc(profileDocRef(user.uid), payload, { merge: true });
 }
 
 // --- Directory querying (Phase 3) ---
