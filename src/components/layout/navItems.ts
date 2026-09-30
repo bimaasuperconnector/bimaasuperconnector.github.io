@@ -6,7 +6,6 @@ import {
   EventsIcon,
   HomeIcon,
   JobsIcon,
-  OpenToWorkIcon,
   ProfileIcon,
   SuperConnectorIcon,
 } from '../icons/NavIcons';
@@ -31,7 +30,6 @@ export const NAV_ITEMS: NavItem[] = [
   { to: '/app/superconnector', label: 'SuperConnector', Icon: SuperConnectorIcon },
   { to: '/app/events', label: 'Events', Icon: EventsIcon },
   { to: '/app/jobs', label: 'Jobs', Icon: JobsIcon },
-  { to: '/app/open-to-work', label: 'Open to Work', Icon: OpenToWorkIcon },
   { to: '/app/entrepreneurship', label: 'Entrepreneurship', Icon: EntrepreneurshipIcon },
   { to: '/app/profile', label: 'My profile', Icon: ProfileIcon },
 ];

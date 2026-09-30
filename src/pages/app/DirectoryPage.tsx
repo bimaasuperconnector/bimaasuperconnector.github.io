@@ -161,7 +161,7 @@ function DirectoryContents() {
           <ul className="grid gap-md sm:grid-cols-2 xl:grid-cols-3">
             {search.visibleResults.map((profile) => (
               <li key={profile.uid}>
-                <DirectoryProfileCard profile={profile} />
+                <DirectoryProfileCard profile={profile} showLookingFor={search.mode === 'openToWork'} />
               </li>
             ))}
           </ul>

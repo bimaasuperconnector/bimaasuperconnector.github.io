@@ -27,7 +27,7 @@ const QUICK_LINKS = [
   { to: '/app/directory', label: 'Directory', description: 'Search the batch by name, org, skill or city.', Icon: DirectoryIcon },
   { to: '/app/superconnector', label: 'SuperConnector', description: "This month's 1:1 or small-circle registration.", Icon: SuperConnectorIcon },
   { to: '/app/jobs', label: 'Jobs', description: 'Open roles posted by fellow alumni.', Icon: JobsIcon },
-  { to: '/app/open-to-work', label: 'Open to Work', description: 'See who is exploring what is next.', Icon: OpenToWorkIcon },
+  { to: '/app/directory?mode=openToWork', label: 'Open to Work', description: 'See who is exploring what is next.', Icon: OpenToWorkIcon },
   { to: '/app/events', label: 'Events', description: 'Upcoming meetups, virtual and in person.', Icon: EventsIcon },
   { to: '/app/entrepreneurship', label: 'Entrepreneurship', description: 'Ventures founded across the network.', Icon: EntrepreneurshipIcon },
 ];

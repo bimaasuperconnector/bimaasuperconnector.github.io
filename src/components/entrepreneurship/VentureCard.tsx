@@ -1,5 +1,11 @@
 import { Link } from 'react-router-dom';
-import type { OrganizationEntry, Profile } from '../../firebase/repositories/profilesRepository';
+import {
+  HANDLE_PLATFORMS,
+  type OrganizationEntry,
+  type Profile,
+  toSafeHref,
+} from '../../firebase/repositories/profilesRepository';
+import { GlobeIcon } from '../icons/NavIcons';
 import { findBatch } from '../../lib/batches';
 import { Avatar } from '../ui/Avatar';
 import { ContactButtons } from '../directory/ContactButtons';
@@ -47,6 +53,8 @@ export function VentureCard({
         </p>
       )}
 
+      <VentureLinks organization={organization} />
+
       <Link
         to={to}
         state={{ profile }}
@@ -63,5 +71,36 @@ export function VentureCard({
         <ContactButtons contact={profile.contactVisible} name={profile.displayName.split(' ')[0] || undefined} className="mt-md" />
       </div>
     </article>
+  );
+}
+
+/** Website + the extra handles the founder chose to add. Renders nothing if there are none. */
+function VentureLinks({ organization }: { organization: OrganizationEntry }) {
+  const websiteHref = toSafeHref(organization.website);
+  const handles = (organization.handles ?? [])
+    .map((h) => ({
+      href: toSafeHref(h.url),
+      label: HANDLE_PLATFORMS.find((p) => p.id === h.platform)?.label ?? 'Link',
+    }))
+    .filter((h) => h.href !== '');
+  if (!websiteHref && handles.length === 0) return null;
+
+  const pill =
+    'inline-flex min-h-[36px] items-center gap-xxs rounded-lg border border-hairline bg-canvas px-sm text-body-md text-ink transition-colors duration-150 hover:border-border-strong hover:bg-surface-soft active:bg-surface-strong';
+
+  return (
+    <div className="mt-md flex flex-wrap gap-xs">
+      {websiteHref && (
+        <a href={websiteHref} target="_blank" rel="noopener noreferrer" className={pill}>
+          <GlobeIcon width={16} height={16} />
+          Website
+        </a>
+      )}
+      {handles.map((h, i) => (
+        <a key={i} href={h.href} target="_blank" rel="noopener noreferrer" className={pill}>
+          {h.label}
+        </a>
+      ))}
+    </div>
   );
 }

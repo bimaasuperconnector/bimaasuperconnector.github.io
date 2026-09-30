@@ -102,7 +102,7 @@ export function EntrepreneurshipPage() {
     ? ventures.filter((v) => {
         const needle = refineText.trim().toLowerCase();
         const haystack =
-          `${v.organization.name} ${v.organization.title} ${v.profile.displayName}`.toLowerCase();
+          `${v.organization.name} ${v.organization.title} ${v.profile.displayName} ${v.organization.website ?? ''}`.toLowerCase();
         return haystack.includes(needle);
       })
     : ventures;
@@ -118,7 +118,7 @@ export function EntrepreneurshipPage() {
             <Link to="/app/profile" className="text-link">
               Profile page
             </Link>{' '}
-            to appear here.
+            to appear here, and add your venture's website and social handles.
           </>
         }
       />

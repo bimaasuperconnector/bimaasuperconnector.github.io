@@ -6,6 +6,7 @@ import { Button } from '../../components/ui/Button';
 import { TagInput } from '../../components/profile/TagInput';
 import { OrganizationsEditor } from '../../components/profile/OrganizationsEditor';
 import { EducationEditor } from '../../components/profile/EducationEditor';
+import { OpenToWorkEditor } from '../../components/profile/OpenToWorkEditor';
 import { ContactPrivacyEditor } from '../../components/profile/ContactPrivacyEditor';
 import { deleteProfilePhotoAsset } from '../../lib/photoUpload';
 import { ProfilePhotoUpload } from '../../components/profile/ProfilePhotoUpload';
@@ -347,6 +348,8 @@ export function ProfilePage() {
             ))}
           </div>
         </div>
+
+        {!isPending && <OpenToWorkEditor profile={profile} onChange={setProfile} />}
 
         {!isPending && (
           <BadgePicker

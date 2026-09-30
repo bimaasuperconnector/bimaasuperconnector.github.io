@@ -33,6 +33,42 @@ export interface OrganizationEntry {
    * the source of truth, per FEATURE_SUPERCONNECTOR.md Phase 12.
    */
   isFounder: boolean;
+  /**
+   * Only meaningful when isFounder is true. The venture's website plus any
+   * extra handles (LinkedIn, X/Twitter, Instagram…) the founder chose to add
+   * by hand. Stored on the organization entry itself (no new collection), so
+   * the Entrepreneurship page gets them from the profile it already fetched:
+   * zero extra Firestore reads.
+   */
+  website?: string;
+  handles?: OrganizationHandle[];
+}
+
+export interface OrganizationHandle {
+  /** One of HANDLE_PLATFORMS ids. */
+  platform: string;
+  url: string;
+}
+
+export const HANDLE_PLATFORMS = [
+  { id: 'linkedin', label: 'LinkedIn' },
+  { id: 'twitter', label: 'X / Twitter' },
+  { id: 'instagram', label: 'Instagram' },
+  { id: 'facebook', label: 'Facebook' },
+  { id: 'youtube', label: 'YouTube' },
+  { id: 'github', label: 'GitHub' },
+  { id: 'other', label: 'Other' },
+] as const;
+
+export const MAX_ORG_HANDLES = 6;
+
+/** Adds https:// when a link was typed without a scheme; blocks non-http(s) schemes. */
+export function toSafeHref(raw: string | undefined): string {
+  const value = (raw ?? '').trim();
+  if (!value) return '';
+  if (/^https?:\/\//i.test(value)) return value;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(value)) return ''; // javascript:, data:, mailto: etc.
+  return `https://${value}`;
 }
 
 export interface EducationEntry {
@@ -290,7 +326,7 @@ function fromSnapshot(uid: string, data: DocumentData): Profile {
     // addition in this project (Phase 3, 5, 6, 10).
     cityCanonical: data.cityCanonical ?? '',
     cityCanonicalLower: data.cityCanonicalLower ?? '',
-    organizations: Array.isArray(data.organizations) ? data.organizations : [],
+    organizations: Array.isArray(data.organizations) ? data.organizations.map(cleanOrganization) : [],
     education: Array.isArray(data.education) ? data.education : [],
     skills: Array.isArray(data.skills) ? data.skills : [],
     skillsLower: Array.isArray(data.skillsLower) ? data.skillsLower : [],
@@ -328,6 +364,36 @@ function fromSnapshot(uid: string, data: DocumentData): Profile {
     contactVisible: buildContactVisibleFromSnapshot(data.contactVisible),
     badges: parseBadgesFromSnapshot(data.badges),
   };
+}
+
+/**
+ * Normalises one organization entry. Firestore rejects literal `undefined`
+ * values, so website/handles are only present when they hold something.
+ * Website and handles are dropped for non-founder entries.
+ */
+function cleanOrganization(raw: OrganizationEntry): OrganizationEntry {
+  const org: OrganizationEntry = {
+    name: raw.name ?? '',
+    title: raw.title ?? '',
+    startYear: typeof raw.startYear === 'number' ? raw.startYear : null,
+    endYear: typeof raw.endYear === 'number' ? raw.endYear : null,
+    isFounder: raw.isFounder === true,
+  };
+  if (org.isFounder) {
+    const website = typeof raw.website === 'string' ? raw.website.trim().slice(0, 300) : '';
+    if (website) org.website = website;
+    const handles = Array.isArray(raw.handles)
+      ? raw.handles
+          .filter((h) => h && typeof h.url === 'string' && h.url.trim() !== '')
+          .slice(0, MAX_ORG_HANDLES)
+          .map((h) => ({
+            platform: HANDLE_PLATFORMS.some((p) => p.id === h.platform) ? h.platform : 'other',
+            url: h.url.trim().slice(0, 300),
+          }))
+      : [];
+    if (handles.length > 0) org.handles = handles;
+  }
+  return org;
 }
 
 function buildContactVisibleFromSnapshot(raw: unknown): ContactVisibleMap {
@@ -558,6 +624,7 @@ async function writeOwnProfile(
   const payload: Record<string, unknown> = {
     uid,
     ...fields,
+    organizations: fields.organizations.map(cleanOrganization),
     photoURL,
     badges: fields.badges.slice(0, MAX_PROFILE_BADGES),
     displayName: name,

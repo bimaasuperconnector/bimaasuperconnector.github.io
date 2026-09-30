@@ -1,4 +1,4 @@
-import { Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes } from 'react-router-dom';
 import { PublicLayout } from '../components/layout/PublicLayout';
 import { AppShell } from '../components/layout/AppShell';
 import { LandingPage } from '../pages/LandingPage';
@@ -13,7 +13,6 @@ import { DirectoryPage } from '../pages/app/DirectoryPage';
 import { MemberProfilePage } from '../pages/app/MemberProfilePage';
 import { SuperConnectorPage } from '../pages/app/SuperConnectorPage';
 import { JobsPage } from '../pages/app/JobsPage';
-import { OpenToWorkPage } from '../pages/app/OpenToWorkPage';
 import { EventsPage } from '../pages/app/EventsPage';
 import { EntrepreneurshipPage } from '../pages/app/EntrepreneurshipPage';
 import { NotificationsPage } from '../pages/app/NotificationsPage';
@@ -46,7 +45,7 @@ export function AppRouter() {
         <Route path="directory/:uid" element={<MemberProfilePage />} />
         <Route path="superconnector" element={<SuperConnectorPage />} />
         <Route path="jobs" element={<JobsPage />} />
-        <Route path="open-to-work" element={<OpenToWorkPage />} />
+        <Route path="open-to-work" element={<Navigate to="/app/directory?mode=openToWork" replace />} />
         <Route path="events" element={<EventsPage />} />
         <Route path="entrepreneurship" element={<EntrepreneurshipPage />} />
         <Route path="notifications" element={<NotificationsPage />} />

@@ -1,6 +1,10 @@
 import type { ReactNode } from 'react';
 import type { Profile } from '../../firebase/repositories/profilesRepository';
-import { NETWORKING_PURPOSE_LABELS } from '../../firebase/repositories/profilesRepository';
+import {
+  HANDLE_PLATFORMS,
+  NETWORKING_PURPOSE_LABELS,
+  toSafeHref,
+} from '../../firebase/repositories/profilesRepository';
 import { findBatch } from '../../lib/batches';
 import { Avatar } from '../ui/Avatar';
 import { BadgeChips } from './BadgeChips';
@@ -163,6 +167,22 @@ export function ProfileView({
                       {org.startYear ? `${org.startYear}\u2013${org.endYear ?? 'present'}` : org.endYear === null ? 'Current' : ''}
                       {org.isFounder && <span className="chip bg-signature-cream">Founder</span>}
                     </p>
+                    {org.isFounder && (toSafeHref(org.website) || (org.handles ?? []).length > 0) && (
+                      <p className="mt-xxs flex flex-wrap gap-x-md gap-y-xxs text-body-md">
+                        {toSafeHref(org.website) && (
+                          <a href={toSafeHref(org.website)} target="_blank" rel="noopener noreferrer" className="text-link">
+                            Website
+                          </a>
+                        )}
+                        {(org.handles ?? [])
+                          .filter((h) => toSafeHref(h.url))
+                          .map((h, hi) => (
+                            <a key={hi} href={toSafeHref(h.url)} target="_blank" rel="noopener noreferrer" className="text-link">
+                              {HANDLE_PLATFORMS.find((p) => p.id === h.platform)?.label ?? 'Link'}
+                            </a>
+                          ))}
+                      </p>
+                    )}
                   </li>
                 ))}
               </ol>
