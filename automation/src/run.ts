@@ -35,23 +35,43 @@ async function main() {
   }
 
   try {
+    // Core cycle jobs: sequential and dependent (cycle state -> matching
+    // -> calendar -> feedback/score). A failure here stops the run —
+    // later cycle steps must never run against a half-finished earlier
+    // step. Errors propagate to the catch below.
     await runCycleStateJob();
     await runMatchingJob();
     await runCalendarJob();
     await runFeedbackScoreJob();
-    await runEventsCalendarJob();
-    await runJobsCleanupJob();
 
-    // Deliberately the one job in this file with its own try/catch:
-    // recomputing the public landing page's aggregate counters is
-    // real but low-stakes (a stale marketing counter, at worst), and
-    // should never cause the whole daily run — including the matching/
-    // calendar/feedback jobs that already succeeded above — to be
-    // logged and exit-coded as a failure. Every other job in this file
-    // intentionally lets an error propagate to the outer catch below,
-    // per Phase 7's "do not silently mark a failed operation
-    // successful"; this one exception is scoped narrowly and logged
-    // either way.
+    // Independent housekeeping jobs. None depends on another's output,
+    // so one failing (e.g. a missing Firestore index) must NOT prevent
+    // the others from running. Each failure is logged to auditLogs and
+    // the run is still marked failed at the end (exit code 1) — never
+    // silently swallowed — but the remaining jobs get their turn first.
+    const independentJobs: Array<[string, () => Promise<void>]> = [
+      ['events-calendar', runEventsCalendarJob],
+      ['jobs-cleanup', runJobsCleanupJob],
+    ];
+    let independentFailures = 0;
+    for (const [name, job] of independentJobs) {
+      try {
+        await job();
+      } catch (err) {
+        independentFailures += 1;
+        console.error(`${name} job failed (other jobs still ran):`, err);
+        await logJobRun({
+          jobName: name,
+          status: 'failure',
+          summary: `The ${name} job failed.`,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    // Deliberately non-fatal: recomputing the public landing page's
+    // aggregate counters is low-stakes (a stale marketing counter, at
+    // worst) and should never fail the run on its own.
     try {
       await runPublicStatsJob();
     } catch (err) {
@@ -64,7 +84,12 @@ async function main() {
       });
     }
 
-    console.log('Automation run completed successfully.');
+    if (independentFailures > 0) {
+      console.error(`Automation run finished with ${independentFailures} failed housekeeping job(s).`);
+      process.exitCode = 1;
+    } else {
+      console.log('Automation run completed successfully.');
+    }
   } catch (err) {
     console.error('Automation run failed:', err);
     await logJobRun({
