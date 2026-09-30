@@ -4,7 +4,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 
 // https://vite.dev/config/
 export default defineConfig({
-  // Served from the root of https://bimsuperconnector.github.io/
+  // Served from the root of https://bimaasuperconnector.github.io/
   base: '/',
   build: {
     chunkSizeWarningLimit: 600,
@@ -30,7 +30,14 @@ export default defineConfig({
       // the service worker — see SECURITY_AND_TESTING.md's PWA section.
       registerType: 'autoUpdate',
       injectRegister: false, // we call registerSW() ourselves in main.tsx
-      includeAssets: ['assets/branding/*.png', 'assets/branding/*.ico'],
+      // Listed explicitly (not a *.png glob) so the link-preview image
+      // og-image.png is never pulled into the precache.
+      includeAssets: [
+        'assets/branding/logo-192.png',
+        'assets/branding/logo-512.png',
+        'assets/branding/apple-touch-icon.png',
+        'assets/branding/logo.ico',
+      ],
       manifest: {
         name: 'SuperConnector',
         short_name: 'SuperConnector',
@@ -64,6 +71,10 @@ export default defineConfig({
         // Precache the app shell only; do not add extra runtime caching
         // rules for API calls (Firestore/Auth are never intercepted).
         globPatterns: ['**/*.{js,css,html,svg,png,ico,webmanifest}'],
+        // The link-preview image is only ever fetched by social-media
+        // crawlers, never by the app itself — keep it out of the
+        // precache so it doesn't add to every user's install/download.
+        globIgnores: ['**/og-image*'],
         // Phase 15 PWA polish: without this, a direct/refreshed load of
         // a deep route (e.g. /app/directory) while OFFLINE hits a
         // browser network-error page, because that path was never
