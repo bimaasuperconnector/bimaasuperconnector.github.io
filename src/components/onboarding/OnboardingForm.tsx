@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { Button } from '../ui/Button';
 import { allBatches } from '../../lib/batches';
@@ -93,6 +94,18 @@ export function OnboardingForm() {
         </div>
 
         {error && <p className="text-body-md text-signature-coral">{error}</p>}
+
+        <p className="text-[13px] leading-snug text-muted">
+          By submitting you confirm you are an alumnus or alumna of BIM, Trichy and agree to our{' '}
+          <Link to="/terms" className="text-link hover:text-link-active">
+            Terms
+          </Link>{' '}
+          and{' '}
+          <Link to="/privacy" className="text-link hover:text-link-active">
+            Privacy Policy
+          </Link>
+          .
+        </p>
 
         <Button
           variant="primary"

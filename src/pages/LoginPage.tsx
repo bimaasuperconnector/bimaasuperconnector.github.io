@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import { Container } from '../components/ui/Container';
 import { Button } from '../components/ui/Button';
 import { useAuth } from '../context/AuthContext';
@@ -64,6 +64,18 @@ export function LoginPage() {
           )}
 
           {error && <p className="mt-md text-body-md text-signature-coral">{error}</p>}
+
+          <p className="mt-lg text-[13px] leading-snug text-muted">
+            By continuing you agree to our{' '}
+            <Link to="/terms" className="text-link hover:text-link-active">
+              Terms
+            </Link>{' '}
+            and{' '}
+            <Link to="/privacy" className="text-link hover:text-link-active">
+              Privacy Policy
+            </Link>
+            .
+          </p>
         </div>
       </Container>
     </section>

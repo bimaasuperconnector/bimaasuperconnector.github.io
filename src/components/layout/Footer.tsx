@@ -6,7 +6,7 @@ export function Footer() {
     <footer className="border-t border-hairline bg-canvas py-xl text-body-md text-muted md:py-xxl">
       <Container className="flex flex-col gap-md md:flex-row md:items-center md:justify-between">
         <p className="text-[14px] leading-relaxed">
-          © 2026 BIMAA SuperConnector. BIM, Trichy alma mater exclusive network
+          © 2026 BIM Alumni Association. BIM, Trichy exclusive alumni network.
         </p>
         <nav aria-label="Legal" className="flex gap-lg">
           <Link to="/terms" className="text-muted hover:text-ink">
