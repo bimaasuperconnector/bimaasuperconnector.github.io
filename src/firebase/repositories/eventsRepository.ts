@@ -63,6 +63,9 @@ const CREATE_ALLOWED_FIELDS = [
   'targetBatchNumbers',
   'targetCityLower',
   'targetUids',
+  'targetChapterIds',
+  'targetBadgeIds',
+  'targetLabels',
   'status',
   'createdAt',
   'updatedAt',
@@ -111,6 +114,10 @@ function fromSnapshot(id: string, data: DocumentData): AlumniEvent {
     targetBatchNumbers: Array.isArray(data.targetBatchNumbers) ? data.targetBatchNumbers : [],
     targetCityLower: data.targetCityLower ?? '',
     targetUids: Array.isArray(data.targetUids) ? data.targetUids : [],
+    // Events created before chapter / badge targeting existed lack these.
+    targetChapterIds: Array.isArray(data.targetChapterIds) ? data.targetChapterIds : [],
+    targetBadgeIds: Array.isArray(data.targetBadgeIds) ? data.targetBadgeIds : [],
+    targetLabels: Array.isArray(data.targetLabels) ? data.targetLabels : [],
     status: (data.status as EventStatus) ?? 'scheduled',
     createdAt: data.createdAt?.toDate?.() ?? null,
     calendarEventHtmlLink: data.calendarEventHtmlLink ?? null,
@@ -146,6 +153,9 @@ export async function createEvent(
     targetBatchNumbers: targeting.targetBatchNumbers,
     targetCityLower: targeting.targetCityLower,
     targetUids: targeting.targetUids,
+    targetChapterIds: targeting.targetChapterIds,
+    targetBadgeIds: targeting.targetBadgeIds,
+    targetLabels: targeting.targetLabels,
     status: 'scheduled',
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
@@ -158,6 +168,7 @@ export async function createEvent(
 
   const ref = doc(eventsCollection());
   await setDoc(ref, payload);
+  invalidateVisibleEvents();
   return ref.id;
 }
 
@@ -175,16 +186,19 @@ export async function updateEvent(eventId: string, fields: EventFormFields): Pro
     throw new Error(`Unexpected event edit fields: ${unexpected.join(', ')}`);
   }
   await updateDoc(eventDocRef(eventId), payload);
+  invalidateVisibleEvents();
 }
 
 /** Cancels without deleting — preserves the RSVP list/history and lets the automation calendar job cancel the real Calendar event on its next run. Prefer this over deleteEvent once RSVPs exist. */
 export async function cancelEvent(eventId: string): Promise<void> {
   await updateDoc(eventDocRef(eventId), { status: 'cancelled', updatedAt: serverTimestamp() });
+  invalidateVisibleEvents();
 }
 
 /** Full removal — the organizer/admin path Rules allow unconditionally (same posture as jobs.delete). The UI should steer toward cancelEvent() once RSVPs exist; this is intentionally not blocked at the Rules layer, since Rules can't cheaply check "are there zero RSVPs" without a count query. */
 export async function deleteEvent(eventId: string): Promise<void> {
   await deleteDoc(eventDocRef(eventId));
+  invalidateVisibleEvents();
 }
 
 export async function getEvent(eventId: string): Promise<AlumniEvent | null> {
@@ -222,9 +236,44 @@ export interface VisibleEventsViewer {
    * vice versa instead of missing on a raw-text mismatch.
    */
   cityCanonicalLower: string;
+  /** The viewer's chapter ids (max 2) — each one that appears in an event's targetChapterIds makes it visible. */
+  chapterIds: string[];
+  /** The viewer's badge ids (max 5) — likewise for targetBadgeIds. */
+  badgeIds: string[];
+}
+
+// Quota optimisation: the visible-events result is remembered in memory for
+// 2 minutes, so leaving the Events page and coming back (or opening it from
+// the dashboard and again from the menu) costs zero reads. Every write that
+// could change the list (create / edit / cancel / delete) clears it first.
+const VISIBLE_EVENTS_TTL_MS = 2 * 60 * 1000;
+let visibleEventsCache: { key: string; at: number; events: AlumniEvent[] } | null = null;
+
+function invalidateVisibleEvents() {
+  visibleEventsCache = null;
+}
+
+function visibleEventsKey(viewer: VisibleEventsViewer): string {
+  return JSON.stringify([
+    viewer.uid,
+    viewer.batchNumber,
+    viewer.cityCanonicalLower,
+    [...viewer.chapterIds].sort(),
+    [...viewer.badgeIds].sort(),
+  ]);
 }
 
 export async function queryVisibleEvents(viewer: VisibleEventsViewer): Promise<AlumniEvent[]> {
+  const key = visibleEventsKey(viewer);
+  if (visibleEventsCache && visibleEventsCache.key === key && Date.now() - visibleEventsCache.at < VISIBLE_EVENTS_TTL_MS) {
+    return visibleEventsCache.events;
+  }
+  const events = await fetchVisibleEvents(viewer);
+  visibleEventsCache = { key, at: Date.now(), events };
+  return events;
+}
+
+async function fetchVisibleEvents(viewer: VisibleEventsViewer): Promise<AlumniEvent[]> {
   const col = eventsCollection();
   const queries = [
     query(col, where('targetType', '==', 'everyone'), orderBy('startTime', 'asc'), fsLimit(VISIBLE_EVENTS_PAGE_SIZE)),
@@ -247,6 +296,34 @@ export async function queryVisibleEvents(viewer: VisibleEventsViewer): Promise<A
         col,
         where('targetType', '==', 'city'),
         where('targetCityLower', '==', viewer.cityCanonicalLower),
+        orderBy('startTime', 'asc'),
+        fsLimit(VISIBLE_EVENTS_PAGE_SIZE),
+      ),
+    );
+  }
+  // Chapter / badge targeting: ONE array-contains query per chapter or badge
+  // the viewer actually has (max 2 + 5), and none at all for a viewer who has
+  // none. Deliberately not a single array-contains-any query: the Security
+  // Rules (canSeeEvent) can prove each single array-contains query only ever
+  // returns events the caller may see, which is what keeps these list
+  // queries from being rejected as a whole.
+  for (const chapterId of viewer.chapterIds) {
+    queries.push(
+      query(
+        col,
+        where('targetType', '==', 'chapter'),
+        where('targetChapterIds', 'array-contains', chapterId),
+        orderBy('startTime', 'asc'),
+        fsLimit(VISIBLE_EVENTS_PAGE_SIZE),
+      ),
+    );
+  }
+  for (const badgeId of viewer.badgeIds) {
+    queries.push(
+      query(
+        col,
+        where('targetType', '==', 'badge'),
+        where('targetBadgeIds', 'array-contains', badgeId),
         orderBy('startTime', 'asc'),
         fsLimit(VISIBLE_EVENTS_PAGE_SIZE),
       ),

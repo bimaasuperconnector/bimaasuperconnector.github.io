@@ -11,6 +11,7 @@ import { ContactPrivacyEditor } from '../../components/profile/ContactPrivacyEdi
 import { deleteProfilePhotoAsset } from '../../lib/photoUpload';
 import { ProfilePhotoUpload } from '../../components/profile/ProfilePhotoUpload';
 import { BadgePicker } from '../../components/profile/BadgePicker';
+import { ChapterPicker } from '../../components/profile/ChapterPicker';
 import { ProfileView } from '../../components/profile/ProfileView';
 import { ErrorNote, SkeletonList } from '../../components/ui/PageHeader';
 import { allBatches } from '../../lib/batches';
@@ -124,6 +125,7 @@ export function ProfilePage() {
           ...toSave,
           batchNumber: record?.batchNumber ?? profile.batchNumber,
           badges: [],
+          chapters: [],
           isComplete,
         });
         await saveOwnProfileContact(user.uid, contact, 'pending');
@@ -330,6 +332,13 @@ export function ProfilePage() {
         )}
 
         {!isPending && <OpenToWorkEditor profile={profile} onChange={setProfile} />}
+
+        {!isPending && (
+          <ChapterPicker
+            selected={profile.chapters}
+            onChange={(chapters) => setProfile({ ...profile, chapters })}
+          />
+        )}
 
         {!isPending && (
           <BadgePicker

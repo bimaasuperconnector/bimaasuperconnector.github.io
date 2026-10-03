@@ -20,6 +20,7 @@ import { Avatar } from '../../../components/ui/Avatar';
 import { ProfileView } from '../../../components/profile/ProfileView';
 import { type Profile, getPendingProfile } from '../../../firebase/repositories/profilesRepository';
 import { BadgesManagement } from '../../../components/admin/BadgesManagement';
+import { ChaptersManagement } from '../../../components/admin/ChaptersManagement';
 import { EmptyState, ErrorNote, PageHeader, SkeletonList } from '../../../components/ui/PageHeader';
 
 function AdminSection({ id, title, action, children }: { id: string; title: string; action?: ReactNode; children: ReactNode }) {
@@ -526,7 +527,7 @@ export function AdminIndexPage() {
   const sections: [string, string][] = [
     ['dashboard', 'Dashboard'],
     ['reports', 'Reports'],
-    ...(isSuperAdmin ? ([['roles', 'Roles'], ['badges', 'Badges']] as [string, string][]) : []),
+    ...(isSuperAdmin ? ([['roles', 'Roles'], ['chapters', 'Chapters'], ['badges', 'Badges']] as [string, string][]) : []),
     ['segments', 'Segments'],
     ['automation', 'Automation'],
     ['approvals', 'Approvals'],
@@ -547,6 +548,7 @@ export function AdminIndexPage() {
       <MetricsDashboard />
       <ReportsQueue />
       {isSuperAdmin && <RoleManagement />}
+      {isSuperAdmin && <ChaptersManagement />}
       {isSuperAdmin && <BadgesManagement />}
       <CommunicationSegments />
       <AuditLogViewer />

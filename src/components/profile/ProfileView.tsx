@@ -8,6 +8,7 @@ import {
 import { findBatch } from '../../lib/batches';
 import { Avatar } from '../ui/Avatar';
 import { BadgeChips } from './BadgeChips';
+import { ChapterChips } from './ChapterChips';
 import { ContactButtons } from '../directory/ContactButtons';
 import { GlobeIcon, MapPinIcon } from '../icons/NavIcons';
 
@@ -108,11 +109,12 @@ export function ProfileView({
             )}
           </p>
 
-          {(profile.hasFounderOrg || profile.openToWork || profile.badges.length > 0) && (
+          {(profile.hasFounderOrg || profile.openToWork || profile.badges.length > 0 || profile.chapters.length > 0) && (
             <div className="mt-md flex flex-wrap items-center gap-xs">
               {profile.hasFounderOrg && <span className="chip bg-signature-cream">Founder</span>}
               {profile.openToWork && <span className="chip bg-signature-mint">Open to Work</span>}
-              <BadgeChips badges={profile.badges} />
+              <ChapterChips chapters={profile.chapters} linkable />
+              <BadgeChips badges={profile.badges} linkable />
             </div>
           )}
 

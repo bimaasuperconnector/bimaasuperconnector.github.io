@@ -162,6 +162,17 @@ service cloud.firestore {
         // skillsLower/interestsLower note above for the same, earlier,
         // accepted gap in this file).
         && data.badges is list && data.badges.size() <= 5
+        // Chapters (up to 2) plus the id-only twins of badges/chapters that
+        // directory search (array-contains) and event targeting read. The
+        // checks are deliberately TOLERANT of a document that doesn't carry
+        // the new fields yet, so an old cached copy of the app (a PWA can
+        // lag a deploy) keeps saving profiles instead of being rejected; the
+        // current app always sends all three, and when present they must be
+        // consistent with the full lists they are derived from.
+        && (!('chapters' in data) || (data.chapters is list && data.chapters.size() <= 2))
+        && (!('badgeIds' in data) || (data.badgeIds is list && data.badgeIds.size() <= 5 && data.badgeIds.size() == data.badges.size()))
+        && (!('chapterIds' in data) || (data.chapterIds is list && data.chapterIds.size() <= 2
+              && 'chapters' in data && data.chapterIds.size() == data.chapters.size()))
         // 2026-09-27 addition: ImageKit-hosted profile photo (see
         // ProfilePhotoUpload.tsx). photoFileId lets a replace/remove ask
         // the Cloudflare Worker (cloudflare-worker/imagekit-worker.js) clean up the previous ImageKit asset.
@@ -186,7 +197,7 @@ service cloud.firestore {
               'education', 'skills', 'skillsLower', 'interests', 'interestsLower', 'networkingPurpose',
               'links', 'isComplete', 'openToWork', 'openToWorkRoles', 'openToWorkNote', 'hasFounderOrg',
               'currentOrganizationName', 'currentTitle', 'approved', 'contactVisible', 'badges',
-              'createdAt', 'updatedAt']
+              'badgeIds', 'chapters', 'chapterIds', 'createdAt', 'updatedAt']
            );
     }
 
@@ -217,6 +228,31 @@ service cloud.firestore {
       allow update: if callerIsSuperAdmin()
         && request.resource.data.createdByUid == resource.data.createdByUid
         && isValidBadgeShape(request.resource.data);
+      allow delete: if callerIsSuperAdmin();
+    }
+
+    // super_admin-managed chapter catalog (e.g. "Chennai Chapter", "Europe
+    // Chapter"). Exactly the same safety reasoning as badges/{badgeId}
+    // above: small, admin-created, so an unfiltered `list` is safe at any
+    // alumni-base size; any approved member may read it (the Profile
+    // picker, the search drop-down and the event-targeting editor need it);
+    // only a super_admin may create or delete. A member's own choice of up
+    // to 2 chapters lives on profiles/{uid} (chapters / chapterIds).
+    function isValidChapterShape(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() <= 40
+        && data.createdByUid is string
+        && data.keys().hasOnly(['name', 'createdByUid', 'createdAt', 'updatedAt']);
+    }
+
+    match /chapters/{chapterId} {
+      allow get: if callerIsApproved() || callerIsAnyAdmin();
+      allow list: if callerIsApproved() || callerIsAnyAdmin();
+      allow create: if callerIsSuperAdmin()
+        && request.resource.data.createdByUid == request.auth.uid
+        && isValidChapterShape(request.resource.data);
+      allow update: if callerIsSuperAdmin()
+        && request.resource.data.createdByUid == resource.data.createdByUid
+        && isValidChapterShape(request.resource.data);
       allow delete: if callerIsSuperAdmin();
     }
 
@@ -746,10 +782,44 @@ service cloud.firestore {
         : '';
     }
 
+    // Chapter / badge targeting. The caller's chapter / badge ids are
+    // recomputed from their OWN profile (never from anything the client
+    // claims). The i-th id is read by position, with '' standing in for
+    // "no i-th id", because the client's visibility queries are one
+    // `array-contains <id>` per chapter / badge the member has, and a rule
+    // of the exact shape `<an id> in data.targetXIds` is what Firestore can
+    // prove safe for such a query (the same shape the batch branch above
+    // already relies on). A profile saved before these fields existed has
+    // none, so it simply sees no chapter / badge events.
+    function callerIdAt(field, i) {
+      return (callerHasProfile()
+          && field in get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data
+          && get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data[field].size() > i)
+        ? get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data[field][i]
+        : '';
+    }
+
+    // A member holds at most 2 chapters and 5 badges (enforced in
+    // isValidProfileShapeWith), so these cover every possible position.
+    function callerHasChapterIn(ids) {
+      return callerIdAt('chapterIds', 0) in ids
+        || callerIdAt('chapterIds', 1) in ids;
+    }
+
+    function callerHasBadgeIn(ids) {
+      return callerIdAt('badgeIds', 0) in ids
+        || callerIdAt('badgeIds', 1) in ids
+        || callerIdAt('badgeIds', 2) in ids
+        || callerIdAt('badgeIds', 3) in ids
+        || callerIdAt('badgeIds', 4) in ids;
+    }
+
     function canSeeEvent(data) {
       return data.targetType == 'everyone'
         || (data.targetType == 'batch' && callerBatchNumber() != null && callerBatchNumber() in data.targetBatchNumbers)
         || (data.targetType == 'city' && callerCityLower() != '' && callerCityLower() == data.targetCityLower)
+        || (data.targetType == 'chapter' && callerHasChapterIn(data.targetChapterIds))
+        || (data.targetType == 'badge' && callerHasBadgeIn(data.targetBadgeIds))
         || (data.targetType == 'selected' && request.auth.uid in data.targetUids)
         || data.organizerUid == request.auth.uid;
     }
@@ -757,14 +827,41 @@ service cloud.firestore {
     // Keep targetBatchNumbers' cap in sync with CURRENT_MAX_BATCH_NUMBER
     // (see isValidBatchNumber above) and targetUids' cap with
     // MAX_TARGET_UIDS in src/lib/events.ts.
+    //
+    // targetChapterIds / targetBadgeIds / targetLabels (display names, one
+    // per chapter / badge id) are read through these helpers so an event
+    // sent by an older cached copy of the app, which doesn't send them,
+    // is still accepted as a plain batch/city/selected/everyone event.
+    function eventChapterIds(data) {
+      return 'targetChapterIds' in data ? data.targetChapterIds : [];
+    }
+
+    function eventBadgeIds(data) {
+      return 'targetBadgeIds' in data ? data.targetBadgeIds : [];
+    }
+
+    function eventTargetLabels(data) {
+      return 'targetLabels' in data ? data.targetLabels : [];
+    }
+
     function isValidEventTargeting(data) {
-      return data.targetType in ['everyone', 'batch', 'city', 'selected']
+      return data.targetType in ['everyone', 'batch', 'city', 'chapter', 'badge', 'selected']
         && data.targetBatchNumbers is list && data.targetBatchNumbers.size() <= 43
         && data.targetCityLower is string && data.targetCityLower.size() <= 120
         && data.targetUids is list && data.targetUids.size() <= 50
+        && eventChapterIds(data) is list && eventChapterIds(data).size() <= 10
+        && eventBadgeIds(data) is list && eventBadgeIds(data).size() <= 10
+        && eventTargetLabels(data) is list && eventTargetLabels(data).size() <= 10
         && (data.targetType == 'batch' ? data.targetBatchNumbers.size() > 0 : data.targetBatchNumbers.size() == 0)
         && (data.targetType == 'city' ? data.targetCityLower.size() > 0 : data.targetCityLower == '')
-        && (data.targetType == 'selected' ? data.targetUids.size() > 0 : data.targetUids.size() == 0);
+        && (data.targetType == 'selected' ? data.targetUids.size() > 0 : data.targetUids.size() == 0)
+        && (data.targetType == 'chapter' ? eventChapterIds(data).size() > 0 : eventChapterIds(data).size() == 0)
+        && (data.targetType == 'badge' ? eventBadgeIds(data).size() > 0 : eventBadgeIds(data).size() == 0)
+        && (data.targetType == 'chapter'
+              ? eventTargetLabels(data).size() == eventChapterIds(data).size()
+              : (data.targetType == 'badge'
+                  ? eventTargetLabels(data).size() == eventBadgeIds(data).size()
+                  : eventTargetLabels(data).size() == 0));
     }
 
     // Core editable fields only — organizer identity, targeting, and
@@ -805,7 +902,8 @@ service cloud.firestore {
         && data.keys().hasOnly(
              ['organizerUid', 'organizerDisplayName', 'title', 'description', 'format', 'location',
               'virtualNote', 'startTime', 'endTime', 'rsvpDeadline', 'capacity', 'targetType',
-              'targetBatchNumbers', 'targetCityLower', 'targetUids', 'status', 'createdAt', 'updatedAt']
+              'targetBatchNumbers', 'targetCityLower', 'targetUids', 'targetChapterIds', 'targetBadgeIds',
+              'targetLabels', 'status', 'createdAt', 'updatedAt']
            );
     }
 

@@ -3,9 +3,13 @@ import { Button } from '../ui/Button';
 import { allBatches } from '../../lib/batches';
 import { normalizeCity, normalizeCityLower } from '../../lib/geography';
 import { findUserByEmail } from '../../firebase/repositories/usersRepository';
+import { useBadgeCatalog, useChapterCatalog } from '../../lib/useCatalog';
 import {
+  EMPTY_EVENT_TARGETING,
   EVENT_TARGET_TYPES,
   EVENT_TARGET_TYPE_LABELS,
+  MAX_TARGET_BADGES,
+  MAX_TARGET_CHAPTERS,
   MAX_TARGET_UIDS,
   type EventTargeting,
   type EventTargetType,
@@ -19,7 +23,76 @@ interface SelectedPerson {
 }
 
 /**
- * Picks exactly one of everyone/batch/city/selected — mirrors
+ * A checkbox-chip list of catalog entries (chapters or badges) for event
+ * targeting. Keeps `ids` and their display `labels` in lock-step so the
+ * event can show "Chennai Chapter" with no catalog read later.
+ */
+function CatalogChoice({
+  items,
+  loading,
+  failed,
+  emptyText,
+  max,
+  ids,
+  labels,
+  onChange,
+}: {
+  items: { id: string; name: string }[];
+  loading: boolean;
+  failed: boolean;
+  emptyText: string;
+  max: number;
+  ids: string[];
+  labels: string[];
+  onChange: (ids: string[], labels: string[]) => void;
+}) {
+  if (loading) return <p className="mt-sm text-caption text-muted">Loading…</p>;
+  if (failed) return <p className="mt-sm text-caption text-signature-coral">Couldn't load the list. Please try again.</p>;
+  if (items.length === 0) return <p className="mt-sm text-caption text-muted">{emptyText}</p>;
+
+  function toggle(id: string, name: string) {
+    const index = ids.indexOf(id);
+    if (index >= 0) {
+      onChange(
+        ids.filter((_, i) => i !== index),
+        labels.filter((_, i) => i !== index),
+      );
+      return;
+    }
+    if (ids.length >= max) return;
+    onChange([...ids, id], [...labels, name]);
+  }
+
+  return (
+    <div className="mt-sm">
+      <div className="flex max-h-40 flex-wrap gap-xs overflow-y-auto rounded-sm border border-hairline p-sm">
+        {items.map((item) => {
+          const checked = ids.includes(item.id);
+          return (
+            <label
+              key={item.id}
+              className={`flex items-center gap-xxs text-caption text-body ${!checked && ids.length >= max ? 'opacity-40' : ''}`}
+            >
+              <input
+                type="checkbox"
+                checked={checked}
+                disabled={!checked && ids.length >= max}
+                onChange={() => toggle(item.id, item.name)}
+              />
+              {item.name}
+            </label>
+          );
+        })}
+      </div>
+      <p className="mt-xs text-caption text-muted">
+        Members in <strong>any</strong> of the ones you tick can see and RSVP. Up to {max}.
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Picks exactly one of everyone/batch/city/chapter/badge/selected — mirrors
  * isValidEventTargeting() in src/lib/events.ts and firestore.rules.
  * Immutable after creation (see eventsRepository.ts' updateEvent),
  * which is why this editor only appears in the CREATE flow.
@@ -47,8 +120,13 @@ export function TargetingEditor({
   // exactly what was typed while still storing the canonical key.
   const [cityDraft, setCityDraft] = useState('');
 
+  // The catalogs are only fetched once the matching option is chosen (and are
+  // cached app-wide, so this is at most one read of each per 10 minutes).
+  const chapters = useChapterCatalog(value.targetType === 'chapter');
+  const badges = useBadgeCatalog(value.targetType === 'badge');
+
   function setType(targetType: EventTargetType) {
-    onChange({ targetType, targetBatchNumbers: [], targetCityLower: '', targetUids: [] });
+    onChange({ ...EMPTY_EVENT_TARGETING, targetType });
     setSelectedPeople([]);
     setCityDraft('');
   }
@@ -146,6 +224,32 @@ export function TargetingEditor({
             </p>
           )}
         </div>
+      )}
+
+      {value.targetType === 'chapter' && (
+        <CatalogChoice
+          items={chapters.items}
+          loading={chapters.loading}
+          failed={chapters.failed}
+          emptyText="No chapters have been created yet."
+          max={MAX_TARGET_CHAPTERS}
+          ids={value.targetChapterIds}
+          labels={value.targetLabels}
+          onChange={(ids, labels) => onChange({ ...value, targetChapterIds: ids, targetLabels: labels })}
+        />
+      )}
+
+      {value.targetType === 'badge' && (
+        <CatalogChoice
+          items={badges.items}
+          loading={badges.loading}
+          failed={badges.failed}
+          emptyText="No badges have been created yet."
+          max={MAX_TARGET_BADGES}
+          ids={value.targetBadgeIds}
+          labels={value.targetLabels}
+          onChange={(ids, labels) => onChange({ ...value, targetBadgeIds: ids, targetLabels: labels })}
+        />
       )}
 
       {value.targetType === 'selected' && (

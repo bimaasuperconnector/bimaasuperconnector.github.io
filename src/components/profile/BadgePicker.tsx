@@ -40,7 +40,12 @@ export function BadgePicker({ selected, onChange }: BadgePickerProps) {
     return <p className="text-body-md text-muted">Loading club and committee badges…</p>;
   }
 
-  if (catalog.length === 0) {
+  // A badge the admin has since deleted would otherwise stay on the profile,
+  // count toward the limit and be impossible to remove, because it no longer
+  // appears in the catalog. Show it so the member can drop it.
+  const removed = selected.filter((s) => !catalog.some((c) => c.id === s.id));
+
+  if (catalog.length === 0 && removed.length === 0) {
     return null;
   }
 
@@ -70,6 +75,17 @@ export function BadgePicker({ selected, onChange }: BadgePickerProps) {
             </button>
           );
         })}
+        {removed.map((badge) => (
+          <button
+            key={badge.id}
+            type="button"
+            onClick={() => onChange(selected.filter((b) => b.id !== badge.id))}
+            className="rounded-full border border-dashed border-signature-coral px-md py-xs text-body-md text-signature-coral"
+            title="This badge is no longer available — click to remove it from your profile"
+          >
+            {badge.name} ✕
+          </button>
+        ))}
       </div>
     </div>
   );

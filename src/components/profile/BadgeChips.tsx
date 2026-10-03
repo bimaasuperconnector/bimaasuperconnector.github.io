@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import type { ProfileBadgeRef } from '../../firebase/repositories/profilesRepository';
 import type { BadgeColorKey } from '../../firebase/repositories/badgesRepository';
 
@@ -13,20 +14,30 @@ const SWATCH_CLASSES: Record<string, string> = {
 };
 
 /** Renders the badges a member has already chosen — reads only the profile's own denormalized data, no extra Firestore cost. */
-export function BadgeChips({ badges }: { badges: ProfileBadgeRef[] }) {
+export function BadgeChips({ badges, linkable = false }: { badges: ProfileBadgeRef[]; linkable?: boolean }) {
   if (!badges || badges.length === 0) return null;
   return (
-    <div className="flex flex-wrap gap-xs">
-      {badges.map((badge) => (
-        <span
-          key={badge.id}
-          className={`rounded-md px-sm py-xxs text-caption ${
-            SWATCH_CLASSES[badge.colorKey as BadgeColorKey] ?? SWATCH_CLASSES.ink
-          }`}
-        >
-          {badge.name}
-        </span>
-      ))}
-    </div>
+    <>
+      {badges.map((badge) => {
+        const className = `rounded-md px-sm py-xxs text-caption ${
+          SWATCH_CLASSES[badge.colorKey as BadgeColorKey] ?? SWATCH_CLASSES.ink
+        }`;
+        // With `linkable`, a chip opens the Directory already searching that badge.
+        return linkable ? (
+          <Link
+            key={badge.id}
+            to={`/app/directory?mode=badge&q=${encodeURIComponent(badge.id)}`}
+            className={`${className} transition-opacity duration-150 hover:opacity-85`}
+            title={`See other members with the ${badge.name} badge`}
+          >
+            {badge.name}
+          </Link>
+        ) : (
+          <span key={badge.id} className={className}>
+            {badge.name}
+          </span>
+        );
+      })}
+    </>
   );
 }

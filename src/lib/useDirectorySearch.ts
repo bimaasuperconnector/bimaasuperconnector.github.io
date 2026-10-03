@@ -24,18 +24,24 @@ import {
  *    "Open in Directory" rather than pulling 24 profiles per keystroke.
  */
 
+export type SearchPickerKind = 'batch' | 'badge' | 'chapter';
+
 export interface SearchModeConfig {
   id: DirectoryMode;
   label: string;
-  /** Needs typed text or a batch choice before it can run. */
+  /** Needs typed text or a choice from a list before it can run. */
   needsInput: boolean;
   placeholder: string;
+  /** Set for the modes that are chosen from a drop-down list rather than typed. */
+  picker?: SearchPickerKind;
 }
 
 export const SEARCH_MODES: SearchModeConfig[] = [
   { id: 'name', label: 'Name', needsInput: true, placeholder: 'Search alumni by name' },
-  { id: 'batch', label: 'Batch', needsInput: true, placeholder: 'Choose a batch' },
+  { id: 'batch', label: 'Batch', needsInput: true, placeholder: 'Choose a batch', picker: 'batch' },
   { id: 'location', label: 'Location', needsInput: true, placeholder: 'Search by city' },
+  { id: 'chapter', label: 'Chapter', needsInput: true, placeholder: 'Choose a chapter', picker: 'chapter' },
+  { id: 'badge', label: 'Badge', needsInput: true, placeholder: 'Choose a club or committee', picker: 'badge' },
   { id: 'skill', label: 'Skill', needsInput: true, placeholder: 'A skill, e.g. Product design' },
   { id: 'interest', label: 'Interest', needsInput: true, placeholder: 'A networking interest' },
   { id: 'founders', label: 'Entrepreneurs', needsInput: false, placeholder: 'Alumni who founded ventures' },

@@ -3,6 +3,8 @@ import type { Profile } from '../../firebase/repositories/profilesRepository';
 import { findBatch } from '../../lib/batches';
 import { Avatar } from '../ui/Avatar';
 import { MapPinIcon } from '../icons/NavIcons';
+import { BadgeChips } from '../profile/BadgeChips';
+import { ChapterChips } from '../profile/ChapterChips';
 import { useAuth } from '../../context/AuthContext';
 
 /**
@@ -48,6 +50,12 @@ export function DirectoryProfileCard({
           <span className="mt-xs flex flex-wrap gap-xs">
             {profile.hasFounderOrg && <span className="chip bg-signature-cream">Founder</span>}
             {profile.openToWork && <span className="chip bg-signature-mint">Open to Work</span>}
+          </span>
+        )}
+        {(profile.chapters.length > 0 || profile.badges.length > 0) && (
+          <span className="mt-xs flex flex-wrap gap-xs">
+            <ChapterChips chapters={profile.chapters} />
+            <BadgeChips badges={profile.badges} />
           </span>
         )}
         {showLookingFor && profile.openToWork && profile.openToWorkRoles.length > 0 && (

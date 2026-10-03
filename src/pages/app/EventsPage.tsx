@@ -20,7 +20,12 @@ import {
   upsertRsvp,
   withdrawRsvp,
 } from '../../firebase/repositories/eventRsvpsRepository';
-import { type EventRsvpStatus, type EventTargeting, isValidCapacity } from '../../lib/events';
+import {
+  EMPTY_EVENT_TARGETING,
+  type EventRsvpStatus,
+  type EventTargeting,
+  isValidCapacity,
+} from '../../lib/events';
 import { type ReportReason, REPORT_REASONS, reportEvent } from '../../firebase/repositories/reportsRepository';
 
 const REPORT_REASON_LABELS: Record<ReportReason, string> = {
@@ -89,13 +94,6 @@ function ReportEventControl({ eventId, reporterUid }: { eventId: string; reporte
     </div>
   );
 }
-
-const EMPTY_TARGETING: EventTargeting = {
-  targetType: 'everyone',
-  targetBatchNumbers: [],
-  targetCityLower: '',
-  targetUids: [],
-};
 
 function defaultFormFields(): EventFormFields {
   const start = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
@@ -230,7 +228,7 @@ export function EventsPage() {
 
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<EventFormFields>(defaultFormFields());
-  const [targeting, setTargeting] = useState<EventTargeting>(EMPTY_TARGETING);
+  const [targeting, setTargeting] = useState<EventTargeting>(EMPTY_EVENT_TARGETING);
   const [creating, setCreating] = useState(false);
 
   async function loadAll() {
@@ -243,6 +241,8 @@ export function EventsPage() {
           uid: user.uid,
           batchNumber: profile?.batchNumber ?? null,
           cityCanonicalLower: profile?.cityCanonicalLower ?? '',
+          chapterIds: profile?.chapterIds ?? [],
+          badgeIds: profile?.badgeIds ?? [],
         }),
         listOwnRsvps(user.uid),
       ]);
@@ -274,7 +274,7 @@ export function EventsPage() {
     try {
       await createEvent(user, form, targeting);
       setForm(defaultFormFields());
-      setTargeting(EMPTY_TARGETING);
+      setTargeting(EMPTY_EVENT_TARGETING);
       setShowForm(false);
       await loadAll();
     } catch {
@@ -307,6 +307,8 @@ export function EventsPage() {
     isValidCapacity(form.capacity) &&
     (targeting.targetType !== 'batch' || targeting.targetBatchNumbers.length > 0) &&
     (targeting.targetType !== 'city' || targeting.targetCityLower.trim()) &&
+    (targeting.targetType !== 'chapter' || targeting.targetChapterIds.length > 0) &&
+    (targeting.targetType !== 'badge' || targeting.targetBadgeIds.length > 0) &&
     (targeting.targetType !== 'selected' || targeting.targetUids.length > 0);
 
   const myOrganizedEvents = events.filter((e) => e.organizerUid === user?.uid);
@@ -318,7 +320,7 @@ export function EventsPage() {
     <div>
       <PageHeader
         title="Events"
-        description="Alumni meetups, virtual or in person. RSVP below, or organize your own for everyone, a batch, a city, or a hand-picked list of people."
+        description="Alumni meetups, virtual or in person. RSVP below, or organize your own for everyone, a batch, a city, a chapter, a club or committee badge, or a hand-picked list of people."
         actions={
           <Button variant="primary" onClick={() => setShowForm((s) => !s)} aria-expanded={showForm}>
             {showForm ? 'Cancel' : 'Create event'}

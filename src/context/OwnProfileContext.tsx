@@ -1,9 +1,11 @@
-import { type ReactNode, createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { type ReactNode, createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   type Profile,
+  profileNeedsIdSync,
   promotePendingProfile,
   subscribeToPendingProfile,
   subscribeToProfile,
+  syncOwnProfileIds,
 } from '../firebase/repositories/profilesRepository';
 import { useAuth } from './AuthContext';
 
@@ -78,6 +80,21 @@ export function OwnProfileProvider({
       () => setState({ profile: null, loaded: true, failed: true }),
     );
   }, [uid, source]);
+
+  // One-time silent self-heal: a member who picked badges before the
+  // searchable `badgeIds` array existed gets it written once (zero reads —
+  // the profile is already in hand — and a single write), so they become
+  // findable by badge search and eligible for badge-targeted events without
+  // having to resave their profile. Attempted at most once per session.
+  const idSyncTried = useRef<string | null>(null);
+  useEffect(() => {
+    if (source !== 'profile' || !user || !uid || user.uid !== uid) return;
+    if (!profileNeedsIdSync(state.profile) || idSyncTried.current === uid) return;
+    idSyncTried.current = uid;
+    void syncOwnProfileIds(user, state.profile as Profile).catch(() => {
+      // Best-effort: the next session tries again; saving the profile also fixes it.
+    });
+  }, [source, user, uid, state.profile]);
 
   const awaitingCopy = Boolean(
     uid &&

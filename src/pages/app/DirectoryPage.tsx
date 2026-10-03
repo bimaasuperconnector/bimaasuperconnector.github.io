@@ -4,11 +4,10 @@ import { Button } from '../../components/ui/Button';
 import { EmptyState, ErrorNote, PageHeader, SkeletonList } from '../../components/ui/PageHeader';
 import { DirectoryProfileCard } from '../../components/directory/DirectoryProfileCard';
 import { SearchIcon } from '../../components/icons/NavIcons';
-import { allBatches } from '../../lib/batches';
+import { SearchPicker } from '../../components/directory/SearchPicker';
 import type { DirectoryMode } from '../../firebase/repositories/profilesRepository';
 import { SEARCH_MODES, modeConfig, useDirectorySearch } from '../../lib/useDirectorySearch';
 
-const BATCHES = allBatches();
 const VALID_MODES = new Set<string>(SEARCH_MODES.map((m) => m.id));
 
 /**
@@ -35,7 +34,7 @@ function DirectoryContents() {
 
   const search = useDirectorySearch({ pageSize: 24, initialMode, initialValue, runInitial: true });
   const config = modeConfig(search.mode);
-  const textMode = config.needsInput && search.mode !== 'batch';
+  const textMode = config.needsInput && !config.picker;
 
   // Mirror the active search in the URL (replace, so Back leaves the page).
   useEffect(() => {
@@ -77,26 +76,18 @@ function DirectoryContents() {
 
         {config.needsInput && (
           <form onSubmit={handleSubmit} className="mt-md flex flex-col gap-sm sm:flex-row" role="search">
-            {search.mode === 'batch' ? (
+            {config.picker ? (
               <>
-                <label htmlFor="directory-batch" className="sr-only">
-                  Batch
+                <label htmlFor="directory-picker" className="sr-only">
+                  {config.label}
                 </label>
-                <select
-                  id="directory-batch"
+                <SearchPicker
+                  id="directory-picker"
+                  kind={config.picker}
                   value={search.value}
-                  onChange={(e) =>
-                    e.target.value ? search.runWith('batch', e.target.value) : search.selectMode('batch')
-                  }
+                  onChange={(v) => (v ? search.runWith(search.mode, v) : search.selectMode(search.mode))}
                   className="field w-full sm:max-w-[320px]"
-                >
-                  <option value="">Select a batch…</option>
-                  {BATCHES.map((b) => (
-                    <option key={b.id} value={b.batchNumber}>
-                      {b.label}
-                    </option>
-                  ))}
-                </select>
+                />
               </>
             ) : (
               <>
@@ -173,7 +164,7 @@ function DirectoryContents() {
 
         {!search.hasSearched && !search.loading && !search.error && (
           <EmptyState title="Find someone in the network">
-            Choose "All members", or search by name, batch, city, skill or interest to get started.
+            Choose "All members", or search by name, batch, city, chapter, badge, skill or interest to get started.
           </EmptyState>
         )}
 

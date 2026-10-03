@@ -3,12 +3,14 @@ import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { Avatar } from '../ui/Avatar';
 import { ArrowLeftIcon, CloseIcon, SearchIcon } from '../icons/NavIcons';
-import { allBatches, findBatch } from '../../lib/batches';
-import { SEARCH_MODES, modeConfig, useDirectorySearch } from '../../lib/useDirectorySearch';
+import { findBatch } from '../../lib/batches';
+import { peekCatalog } from '../../lib/catalogCache';
+import { SearchPicker } from '../directory/SearchPicker';
+import type { Badge } from '../../firebase/repositories/badgesRepository';
+import type { Chapter } from '../../firebase/repositories/chaptersRepository';
+import { SEARCH_MODES, type SearchModeConfig, modeConfig, useDirectorySearch } from '../../lib/useDirectorySearch';
 import type { Profile } from '../../firebase/repositories/profilesRepository';
 import { useDismiss } from './usePopover';
-
-const BATCHES = allBatches();
 
 type Search = ReturnType<typeof useDirectorySearch>;
 
@@ -83,28 +85,22 @@ function SearchPanel({ search, ownUid, onOpenResult, onClose }: { search: Search
         ))}
       </div>
 
-      {search.mode === 'batch' && (
+      {config.picker && (
         <div className="mt-md">
-          <label htmlFor="header-search-batch" className="text-caption text-muted">
-            Batch
+          <label htmlFor="header-search-picker" className="text-caption text-muted">
+            {config.label}
           </label>
-          <select
-            id="header-search-batch"
+          <SearchPicker
+            id="header-search-picker"
+            kind={config.picker}
             value={search.value}
-            onChange={(e) => (e.target.value ? search.runWith('batch', e.target.value) : search.selectMode('batch'))}
+            onChange={(v) => (v ? search.runWith(search.mode, v) : search.selectMode(search.mode))}
             className="field mt-xxs block w-full"
-          >
-            <option value="">Select a batch…</option>
-            {BATCHES.map((b) => (
-              <option key={b.id} value={b.batchNumber}>
-                {b.label}
-              </option>
-            ))}
-          </select>
+          />
         </div>
       )}
 
-      {config.needsInput && search.mode !== 'batch' && (
+      {config.needsInput && !config.picker && (
         <div className="mt-md flex items-center justify-between gap-sm">
           <p className="text-body-md text-muted">
             {isLive ? 'Type at least 2 letters — results appear as you pause.' : 'Type it in the bar and press Enter.'}
@@ -133,7 +129,7 @@ function SearchPanel({ search, ownUid, onOpenResult, onClose }: { search: Search
 
         {!search.hasSearched && !search.loading && !search.error && (
           <p className="py-sm text-center text-body-md text-muted">
-            Find alumni by name, batch, city, skill or interest — or browse entrepreneurs and people open to work.
+            Find alumni by name, batch, city, chapter, badge, skill or interest — or browse entrepreneurs and people open to work.
           </p>
         )}
 
@@ -199,6 +195,14 @@ function SearchPanel({ search, ownUid, onOpenResult, onClose }: { search: Search
   );
 }
 
+/** The text shown in the (read-only) bar for a search chosen from a list: the batch / badge / chapter NAME, never its raw id. */
+function pickerDisplay(picker: SearchModeConfig['picker'], value: string): string {
+  if (!value || !picker) return value;
+  if (picker === 'batch') return findBatch(Number(value))?.label ?? value;
+  if (picker === 'badge') return peekCatalog<Badge>('badges')?.find((b) => b.id === value)?.name ?? '';
+  return peekCatalog<Chapter>('chapters')?.find((c) => c.id === value)?.name ?? '';
+}
+
 /** The bar itself: leading search icon, mode token, text input, clear button. */
 function SearchField({
   search,
@@ -214,9 +218,8 @@ function SearchField({
   inputId: string;
 }) {
   const config = modeConfig(search.mode);
-  const textMode = config.needsInput && search.mode !== 'batch';
-  const display =
-    search.mode === 'batch' && search.value ? (findBatch(Number(search.value))?.label ?? search.value) : search.value;
+  const textMode = config.needsInput && !config.picker;
+  const display = pickerDisplay(config.picker, search.value);
 
   return (
     <form

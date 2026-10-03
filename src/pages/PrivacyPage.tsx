@@ -37,7 +37,7 @@ export function PrivacyPage() {
         <p>
           <strong>Your profile.</strong> What you choose to add: photo, name, headline, bio, city, current
           and past organisations (including whether you founded them), education, skills, interests,
-          networking goals, links, badges, and whether you are open to work with the roles and note you
+          networking goals, links, badges, chapters, and whether you are open to work with the roles and note you
           provide. Your city is also matched to a standard spelling (for example Bangalore and Bengaluru
           are treated as the same city).
         </p>
@@ -91,7 +91,7 @@ export function PrivacyPage() {
         </p>
         <p>
           <strong>Approved members</strong> can see your directory profile: name, photo, batch, headline,
-          bio, city, organisations, education, skills, interests, networking goals, badges, open-to-work
+          bio, city, organisations, education, skills, interests, networking goals, badges, chapters, open-to-work
           details and links you added. They can also see jobs and events you post. They cannot see the
           email address you signed in with.
         </p>

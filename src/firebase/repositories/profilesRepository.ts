@@ -142,6 +142,22 @@ export interface ProfileBadgeRef {
 
 export const MAX_PROFILE_BADGES = 5;
 
+/**
+ * A chapter (e.g. "Chennai Chapter", "Europe Chapter") a member has
+ * enrolled in — same denormalization idea as ProfileBadgeRef: id + the
+ * chapter's name at the time it was selected, stored on profiles/{uid} so
+ * cards and the full-profile view can show it at zero extra read cost.
+ * A member may belong to at most MAX_PROFILE_CHAPTERS (2) — e.g. where
+ * they live now and where they return to. The chapter CATALOG lives in
+ * chapters/{chapterId} (see chaptersRepository.ts).
+ */
+export interface ProfileChapterRef {
+  id: string;
+  name: string;
+}
+
+export const MAX_PROFILE_CHAPTERS = 2;
+
 /** Fields the profile owner edits directly. */
 export interface ProfileFormFields {
   /**
@@ -190,6 +206,8 @@ export interface ProfileFormFields {
   openToWorkNote: string;
   /** Up to MAX_PROFILE_BADGES badges the member has chosen to display — see ProfileBadgeRef above. */
   badges: ProfileBadgeRef[];
+  /** Up to MAX_PROFILE_CHAPTERS chapters the member has enrolled in — see ProfileChapterRef above. */
+  chapters: ProfileChapterRef[];
   /**
    * ImageKit-hosted profile photo (2026-09-27 addition). Owner-uploaded,
    * via ProfilePhotoUpload.tsx — replaces the old "always mirrored from
@@ -242,6 +260,15 @@ export interface Profile extends ProfileFormFields {
   currentOrganizationName: string;
   currentTitle: string;
   contactVisible: ContactVisibleMap;
+  /**
+   * Denormalized id-only twins of `badges` / `chapters`, always computed by
+   * buildProfilePayload (never independently client-set). They exist
+   * because Firestore can only run an `array-contains` query (directory
+   * search by badge / chapter) and Security Rules can only test event
+   * targeting against a plain list of ids — not against a list of maps.
+   */
+  badgeIds: string[];
+  chapterIds: string[];
 }
 
 const ALLOWED_TOP_LEVEL_FIELDS = [
@@ -274,6 +301,9 @@ const ALLOWED_TOP_LEVEL_FIELDS = [
   'approved',
   'contactVisible',
   'badges',
+  'badgeIds',
+  'chapters',
+  'chapterIds',
   'photoFileId',
   'createdAt',
   'updatedAt',
@@ -302,7 +332,9 @@ function profilesCollection() {
 }
 
 function fromSnapshot(uid: string, data: DocumentData): Profile {
-  return {
+  const badges = parseBadgesFromSnapshot(data.badges);
+  const chapters = parseChaptersFromSnapshot(data.chapters);
+  const profile: Profile = {
     uid,
     displayName: data.displayName ?? '',
     displayNameLower: data.displayNameLower ?? '',
@@ -362,8 +394,25 @@ function fromSnapshot(uid: string, data: DocumentData): Profile {
     // expects (and only ever allows) a map with just the *present*
     // keys — this fix makes the client actually produce that shape.
     contactVisible: buildContactVisibleFromSnapshot(data.contactVisible),
-    badges: parseBadgesFromSnapshot(data.badges),
+    badges,
+    chapters,
+    // Derived from the full refs (not trusted from the stored arrays) so the
+    // in-memory model is always consistent, even for a profile saved before
+    // these id arrays existed.
+    badgeIds: badges.map((b) => b.id),
+    chapterIds: chapters.map((c) => c.id),
   };
+  // A profile that already has badges but was saved before `badgeIds`
+  // existed is invisible to badge search / badge-targeted events until it is
+  // re-saved once. Flag it so OwnProfileContext can do that silently.
+  if (badges.length > 0 && !Array.isArray(data.badgeIds)) needsIdSync.add(profile);
+  return profile;
+}
+
+/** Profiles (as parsed from a snapshot) whose stored document lacks the badgeIds array — see fromSnapshot. */
+const needsIdSync = new WeakSet<Profile>();
+export function profileNeedsIdSync(profile: Profile | null): boolean {
+  return profile !== null && needsIdSync.has(profile);
 }
 
 /**
@@ -417,6 +466,20 @@ function parseBadgesFromSnapshot(raw: unknown): ProfileBadgeRef[] {
     .map((b) => ({ id: b.id, name: b.name, colorKey: typeof b.colorKey === 'string' ? b.colorKey : 'ink' }));
 }
 
+function parseChaptersFromSnapshot(raw: unknown): ProfileChapterRef[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const out: ProfileChapterRef[] = [];
+  for (const c of raw) {
+    if (!c || typeof c !== 'object') continue;
+    if (typeof c.id !== 'string' || typeof c.name !== 'string' || seen.has(c.id)) continue;
+    seen.add(c.id);
+    out.push({ id: c.id, name: c.name });
+    if (out.length >= MAX_PROFILE_CHAPTERS) break;
+  }
+  return out;
+}
+
 /**
  * `seedDisplayName` prefills the name field for a brand-new profile —
  * pass the onboarding name (`users/{uid}.displayName`, already loaded
@@ -454,6 +517,9 @@ export function emptyProfile(uid: string, seedDisplayName = ''): Profile {
     currentTitle: '',
     contactVisible: {},
     badges: [],
+    chapters: [],
+    badgeIds: [],
+    chapterIds: [],
   };
 }
 
@@ -623,12 +689,21 @@ function buildProfilePayload(
   // and is shown the built-in placeholder (components/ui/Avatar.tsx).
   // This also cleans out any Google URL a pre-upload profile still holds.
   const photoURL = fields.photoFileId ? fields.photoURL : null;
+  // De-duplicated and capped, so the stored id arrays can never exceed what
+  // firestore.rules allows even if a stale in-memory copy slipped through.
+  const badges = dedupeById(fields.badges ?? []).slice(0, MAX_PROFILE_BADGES);
+  const chapters = dedupeById(fields.chapters ?? []).slice(0, MAX_PROFILE_CHAPTERS);
   return {
     uid: user.uid,
     ...fields,
     organizations: fields.organizations.map(cleanOrganization),
     photoURL,
-    badges: fields.badges.slice(0, MAX_PROFILE_BADGES),
+    badges,
+    chapters,
+    // Id-only twins used by directory search (array-contains) and by event
+    // targeting in firestore.rules — see Profile.badgeIds.
+    badgeIds: badges.map((b) => b.id),
+    chapterIds: chapters.map((c) => c.id),
     displayName: name,
     displayNameLower: name.toLowerCase(),
     locationLower: fields.location.toLowerCase(),
@@ -651,6 +726,11 @@ function buildProfilePayload(
     approved: target === 'profile',
     updatedAt: serverTimestamp(),
   };
+}
+
+function dedupeById<T extends { id: string }>(items: T[]): T[] {
+  const seen = new Set<string>();
+  return items.filter((item) => (seen.has(item.id) ? false : (seen.add(item.id), true)));
 }
 
 function assertAllowedFields(payload: Record<string, unknown>): void {
@@ -714,6 +794,19 @@ export async function saveOwnSuperConnectorPrefs(
   await setDoc(profileDocRef(user.uid), payload, { merge: true });
 }
 
+/**
+ * One-time, silent self-heal for a member who picked badges before
+ * `badgeIds` existed: re-saves their own profile so the id array is stored
+ * (making them findable by badge search and eligible for badge-targeted
+ * events). Zero reads — the caller passes the profile its live listener
+ * already holds — and exactly one write, once per affected member.
+ */
+export async function syncOwnProfileIds(user: FirebaseUser, current: Profile): Promise<void> {
+  const payload = buildProfilePayload(user, current, 'profile');
+  assertAllowedFields(payload);
+  await setDoc(profileDocRef(user.uid), payload, { merge: true });
+}
+
 // --- Directory querying (Phase 3) ---
 //
 // Firestore has no full-text search. Each mode below drives exactly ONE
@@ -732,11 +825,13 @@ export type DirectoryMode =
   | 'skill'
   | 'interest'
   | 'founders'
-  | 'openToWork';
+  | 'openToWork'
+  | 'badge'
+  | 'chapter';
 
 export interface DirectoryQueryOptions {
   mode: DirectoryMode;
-  /** Required for 'batch' (batch number), 'name'/'location' (prefix text), 'skill'/'interest' (exact tag, case-insensitive). Unused for 'all'/'founders'. */
+  /** Required for 'batch' (batch number), 'name'/'location' (prefix text), 'skill'/'interest' (exact tag, case-insensitive), 'badge'/'chapter' (the catalog id). Unused for 'all'/'founders'. */
   value?: string | number;
   pageSize?: number;
   cursor?: QueryDocumentSnapshot<DocumentData> | null;
@@ -770,6 +865,15 @@ export async function queryDirectory(options: DirectoryQueryOptions): Promise<Di
       // data doesn't exist yet"). Same safe pattern as 'founders': a
       // plain indexed equality filter, not a cross-collection lookup.
       constraints.push(where('openToWork', '==', true));
+      constraints.push(orderBy('displayNameLower'));
+      break;
+    case 'badge':
+      // Indexed array-contains on the id-only twin of profile.badges.
+      constraints.push(where('badgeIds', 'array-contains', String(options.value)));
+      constraints.push(orderBy('displayNameLower'));
+      break;
+    case 'chapter':
+      constraints.push(where('chapterIds', 'array-contains', String(options.value)));
       constraints.push(orderBy('displayNameLower'));
       break;
     case 'skill':

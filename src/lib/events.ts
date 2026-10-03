@@ -24,13 +24,15 @@ export const EVENT_FORMAT_LABELS: Record<EventFormat, string> = {
   physical: 'In person',
 };
 
-export const EVENT_TARGET_TYPES = ['everyone', 'batch', 'city', 'selected'] as const;
+export const EVENT_TARGET_TYPES = ['everyone', 'batch', 'city', 'chapter', 'badge', 'selected'] as const;
 export type EventTargetType = (typeof EVENT_TARGET_TYPES)[number];
 
 export const EVENT_TARGET_TYPE_LABELS: Record<EventTargetType, string> = {
   everyone: 'Everyone',
   batch: 'Specific batch(es)',
   city: 'A city',
+  chapter: 'Chapter(s)',
+  badge: 'Club / committee badge(s)',
   selected: 'Selected people',
 };
 
@@ -43,6 +45,9 @@ export type EventRsvpStatus = (typeof EVENT_RSVP_STATUSES)[number];
 /** Mirrors firestore.rules' isValidEventTargeting size caps. */
 export const MAX_TARGET_BATCH_NUMBERS = 43;
 export const MAX_TARGET_UIDS = 50;
+/** Mirrors firestore.rules' isValidEventTargeting caps for chapter / badge targeting. */
+export const MAX_TARGET_CHAPTERS = 10;
+export const MAX_TARGET_BADGES = 10;
 export const MAX_CAPACITY = 1000;
 
 export interface EventTargeting {
@@ -50,7 +55,27 @@ export interface EventTargeting {
   targetBatchNumbers: number[];
   targetCityLower: string;
   targetUids: string[];
+  /** Chapter ids — only for targetType 'chapter' (a member matches if ANY of their chapters is listed). */
+  targetChapterIds: string[];
+  /** Badge ids — only for targetType 'badge' (a member matches if they wear ANY listed badge). */
+  targetBadgeIds: string[];
+  /**
+   * Display names for the chapter / badge ids above (same order), stored on
+   * the event so event cards can say "Chennai Chapter" with zero catalog
+   * reads. Display only — visibility is decided by the ids.
+   */
+  targetLabels: string[];
 }
+
+export const EMPTY_EVENT_TARGETING: EventTargeting = {
+  targetType: 'everyone',
+  targetBatchNumbers: [],
+  targetCityLower: '',
+  targetUids: [],
+  targetChapterIds: [],
+  targetBadgeIds: [],
+  targetLabels: [],
+};
 
 /** For display only — what a viewer is told about why an event reached them. */
 export function targetingSummary(t: EventTargeting): string {
@@ -63,6 +88,10 @@ export function targetingSummary(t: EventTargeting): string {
         : 'Specific batch(es)';
     case 'city':
       return t.targetCityLower ? `${t.targetCityLower} alumni` : 'A specific city';
+    case 'chapter':
+      return t.targetLabels.length > 0 ? `${t.targetLabels.join(', ')} members` : 'Specific chapter(s)';
+    case 'badge':
+      return t.targetLabels.length > 0 ? `${t.targetLabels.join(', ')} badge holders` : 'Specific badge(s)';
     case 'selected':
       return 'Invited members only';
   }
@@ -75,7 +104,15 @@ export function targetingSummary(t: EventTargeting): string {
  */
 export function canViewEvent(
   event: EventTargeting & { organizerUid: string },
-  viewer: { uid: string; batchNumber: number | null; cityCanonicalLower: string },
+  viewer: {
+    uid: string;
+    batchNumber: number | null;
+    cityCanonicalLower: string;
+    /** The viewer's chapter ids (max 2). Omit/empty = none. */
+    chapterIds?: string[];
+    /** The viewer's badge ids (max 5). Omit/empty = none. */
+    badgeIds?: string[];
+  },
 ): boolean {
   if (event.organizerUid === viewer.uid) return true;
   switch (event.targetType) {
@@ -85,6 +122,10 @@ export function canViewEvent(
       return viewer.batchNumber != null && event.targetBatchNumbers.includes(viewer.batchNumber);
     case 'city':
       return viewer.cityCanonicalLower !== '' && viewer.cityCanonicalLower === event.targetCityLower;
+    case 'chapter':
+      return (viewer.chapterIds ?? []).some((id) => event.targetChapterIds.includes(id));
+    case 'badge':
+      return (viewer.badgeIds ?? []).some((id) => event.targetBadgeIds.includes(id));
     case 'selected':
       return event.targetUids.includes(viewer.uid);
   }
@@ -138,8 +179,15 @@ export function isValidEventTargeting(t: EventTargeting): boolean {
   if (!EVENT_TARGET_TYPES.includes(t.targetType)) return false;
   if (t.targetBatchNumbers.length > MAX_TARGET_BATCH_NUMBERS) return false;
   if (t.targetUids.length > MAX_TARGET_UIDS) return false;
+  if (t.targetChapterIds.length > MAX_TARGET_CHAPTERS) return false;
+  if (t.targetBadgeIds.length > MAX_TARGET_BADGES) return false;
+  const chapterOk = t.targetType === 'chapter' ? t.targetChapterIds.length > 0 : t.targetChapterIds.length === 0;
+  const badgeOk = t.targetType === 'badge' ? t.targetBadgeIds.length > 0 : t.targetBadgeIds.length === 0;
+  // Display names must line up one-to-one with the ids they describe.
+  const labelIdCount = t.targetType === 'chapter' ? t.targetChapterIds.length : t.targetType === 'badge' ? t.targetBadgeIds.length : 0;
+  const labelsOk = t.targetLabels.length === labelIdCount;
   const batchOk = t.targetType === 'batch' ? t.targetBatchNumbers.length > 0 : t.targetBatchNumbers.length === 0;
   const cityOk = t.targetType === 'city' ? t.targetCityLower.length > 0 : t.targetCityLower === '';
   const selectedOk = t.targetType === 'selected' ? t.targetUids.length > 0 : t.targetUids.length === 0;
-  return batchOk && cityOk && selectedOk;
+  return batchOk && cityOk && selectedOk && chapterOk && badgeOk && labelsOk;
 }

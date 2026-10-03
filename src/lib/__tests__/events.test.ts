@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   canViewEvent,
+  targetingSummary,
   computeAvailability,
   isRsvpWindowOpen,
   isValidCapacity,
@@ -13,6 +14,9 @@ describe('canViewEvent', () => {
     targetBatchNumbers: [] as number[],
     targetCityLower: '',
     targetUids: [] as string[],
+    targetChapterIds: [] as string[],
+    targetBadgeIds: [] as string[],
+    targetLabels: [] as string[],
   };
 
   it('organizer can always see their own event regardless of targeting', () => {
@@ -51,6 +55,51 @@ describe('canViewEvent', () => {
     const event = { ...base, targetType: 'selected' as const, targetUids: ['a', 'b'] };
     expect(canViewEvent(event, { uid: 'a', batchNumber: null, cityCanonicalLower: '' })).toBe(true);
     expect(canViewEvent(event, { uid: 'z', batchNumber: null, cityCanonicalLower: '' })).toBe(false);
+  });
+
+  it('chapter targeting matches a viewer in ANY listed chapter (they may hold two)', () => {
+    const event = {
+      ...base,
+      targetType: 'chapter' as const,
+      targetChapterIds: ['chennai', 'tn'],
+      targetLabels: ['Chennai Chapter', 'TN Chapter'],
+    };
+    const viewer = { uid: 'v', batchNumber: null, cityCanonicalLower: '' };
+    expect(canViewEvent(event, { ...viewer, chapterIds: ['chennai'] })).toBe(true);
+    // lives in Australia now, returns to Chennai yearly -> still sees the Chennai event
+    expect(canViewEvent(event, { ...viewer, chapterIds: ['australia', 'chennai'] })).toBe(true);
+    expect(canViewEvent(event, { ...viewer, chapterIds: ['australia'] })).toBe(false);
+    expect(canViewEvent(event, { ...viewer, chapterIds: [] })).toBe(false);
+    expect(canViewEvent(event, viewer)).toBe(false);
+  });
+
+  it('badge targeting matches only viewers who wear a listed badge, and never a chapter-only match', () => {
+    const event = { ...base, targetType: 'badge' as const, targetBadgeIds: ['finclub'], targetLabels: ['Finclub'] };
+    const viewer = { uid: 'v', batchNumber: null, cityCanonicalLower: '' };
+    expect(canViewEvent(event, { ...viewer, badgeIds: ['messcom', 'finclub'] })).toBe(true);
+    expect(canViewEvent(event, { ...viewer, badgeIds: ['messcom'] })).toBe(false);
+    // the same id held as a chapter must not grant access to a badge event
+    expect(canViewEvent(event, { ...viewer, chapterIds: ['finclub'] })).toBe(false);
+  });
+});
+
+describe('targetingSummary', () => {
+  const base = {
+    targetBatchNumbers: [] as number[],
+    targetCityLower: '',
+    targetUids: [] as string[],
+    targetChapterIds: [] as string[],
+    targetBadgeIds: [] as string[],
+    targetLabels: [] as string[],
+  };
+
+  it('names the chapters and badges an event is open to', () => {
+    expect(
+      targetingSummary({ ...base, targetType: 'chapter', targetChapterIds: ['a', 'b'], targetLabels: ['Chennai Chapter', 'India Chapter'] }),
+    ).toBe('Chennai Chapter, India Chapter members');
+    expect(
+      targetingSummary({ ...base, targetType: 'badge', targetBadgeIds: ['a'], targetLabels: ['Finclub'] }),
+    ).toBe('Finclub badge holders');
   });
 });
 
@@ -129,7 +178,14 @@ describe('isValidCapacity', () => {
 });
 
 describe('isValidEventTargeting', () => {
-  const base = { targetBatchNumbers: [] as number[], targetCityLower: '', targetUids: [] as string[] };
+  const base = {
+    targetBatchNumbers: [] as number[],
+    targetCityLower: '',
+    targetUids: [] as string[],
+    targetChapterIds: [] as string[],
+    targetBadgeIds: [] as string[],
+    targetLabels: [] as string[],
+  };
 
   it('everyone must carry no type-specific data', () => {
     expect(isValidEventTargeting({ ...base, targetType: 'everyone' })).toBe(true);
@@ -157,5 +213,31 @@ describe('isValidEventTargeting', () => {
   it('rejects an oversized selected list', () => {
     const many = Array.from({ length: 51 }, (_, i) => `uid${i}`);
     expect(isValidEventTargeting({ ...base, targetType: 'selected', targetUids: many })).toBe(false);
+  });
+  it('chapter targeting needs at least one chapter and a matching label for each', () => {
+    expect(
+      isValidEventTargeting({ ...base, targetType: 'chapter', targetChapterIds: ['c1'], targetLabels: ['Chennai Chapter'] }),
+    ).toBe(true);
+    expect(isValidEventTargeting({ ...base, targetType: 'chapter' })).toBe(false);
+    // label count must equal id count
+    expect(isValidEventTargeting({ ...base, targetType: 'chapter', targetChapterIds: ['c1'], targetLabels: [] })).toBe(false);
+    // chapter ids are not allowed on any other targeting type
+    expect(isValidEventTargeting({ ...base, targetType: 'everyone', targetChapterIds: ['c1'], targetLabels: ['x'] })).toBe(false);
+    expect(isValidEventTargeting({ ...base, targetType: 'batch', targetBatchNumbers: [1], targetChapterIds: ['c1'] })).toBe(false);
+  });
+
+  it('badge targeting needs at least one badge and a matching label for each', () => {
+    expect(
+      isValidEventTargeting({ ...base, targetType: 'badge', targetBadgeIds: ['b1', 'b2'], targetLabels: ['A', 'B'] }),
+    ).toBe(true);
+    expect(isValidEventTargeting({ ...base, targetType: 'badge' })).toBe(false);
+    expect(isValidEventTargeting({ ...base, targetType: 'badge', targetBadgeIds: ['b1'], targetLabels: ['A', 'B'] })).toBe(false);
+    expect(isValidEventTargeting({ ...base, targetType: 'chapter', targetChapterIds: ['c1'], targetBadgeIds: ['b1'], targetLabels: ['A'] })).toBe(false);
+  });
+
+  it('caps chapter and badge targets at 10 each', () => {
+    const many = Array.from({ length: 11 }, (_, i) => `id${i}`);
+    expect(isValidEventTargeting({ ...base, targetType: 'chapter', targetChapterIds: many, targetLabels: many })).toBe(false);
+    expect(isValidEventTargeting({ ...base, targetType: 'badge', targetBadgeIds: many, targetLabels: many })).toBe(false);
   });
 });
