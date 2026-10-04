@@ -1,0 +1,51 @@
+name: Directory Index
+
+on:
+  schedule:
+    # Hourly (at 17 minutes past, to stay clear of the busy top-of-the-hour
+    # slot). GitHub Actions cron is not an exact scheduler — a run can start
+    # several minutes late — which is fine: the job works from "what changed
+    # since the last run", not from the clock.
+    - cron: '17 * * * *'
+  workflow_dispatch:
+    inputs:
+      full:
+        description: 'Rebuild the whole index from every profile (normally not needed)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# Never two runs at once; a queued run waits for the one in progress.
+concurrency:
+  group: directory-index
+  cancel-in-progress: false
+
+jobs:
+  sync-directory-index:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: automation/package-lock.json
+
+      - name: Install automation dependencies
+        working-directory: automation
+        run: npm ci
+
+      - name: Sync the member-name index
+        working-directory: automation
+        env:
+          # The same Firebase service account secret the monthly automation
+          # already uses — nothing new to create. Never printed or logged.
+          GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
+          DIRECTORY_INDEX_FULL: ${{ inputs.full == true && 'true' || 'false' }}
+        run: npm run sync-directory-index

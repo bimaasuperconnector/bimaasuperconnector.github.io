@@ -5,7 +5,8 @@
   "type": "module",
   "description": "Phase 7 trusted monthly automation, run by .github/workflows/monthly-automation.yml via the Firebase Admin SDK. Deliberately a SEPARATE package from the main app (which never imports anything here) so firebase-admin — a Node-only dependency — never risks being pulled into the browser bundle.",
   "scripts": {
-    "start": "tsx src/run.ts"
+    "start": "tsx src/run.ts",
+    "sync-directory-index": "tsx src/directoryIndexRun.ts"
   },
   "dependencies": {
     "firebase-admin": "^13.0.0",

@@ -10,6 +10,7 @@ import type { Badge } from '../../firebase/repositories/badgesRepository';
 import type { Chapter } from '../../firebase/repositories/chaptersRepository';
 import { SEARCH_MODES, type SearchModeConfig, modeConfig, useDirectorySearch } from '../../lib/useDirectorySearch';
 import type { Profile } from '../../firebase/repositories/profilesRepository';
+import { isLiteProfile } from '../../lib/liteProfile';
 import { useDismiss } from './usePopover';
 
 type Search = ReturnType<typeof useDirectorySearch>;
@@ -28,7 +29,9 @@ function ResultRow({ profile, ownUid, onOpen }: { profile: Profile; ownUid?: str
   return (
     <Link
       to={to}
-      state={{ profile }}
+      // A lite row (built from the name index) has no full profile to hand over — the page
+      // then loads the real document itself. A full profile is handed over to save that read.
+      state={isLiteProfile(profile) ? undefined : { profile }}
       onClick={onOpen}
       data-result-row
       className="flex min-h-[56px] items-center gap-sm rounded-lg px-sm py-xs text-left transition-colors duration-150 hover:bg-surface-soft active:bg-surface-strong"
@@ -65,6 +68,10 @@ function SearchPanel({ search, ownUid, onOpenResult, onClose }: { search: Search
     const next = event.key === 'ArrowDown' ? rows[index + 1] : rows[index - 1];
     next?.focus();
   };
+
+  // Rows built from the name index carry the role text only (no education), so the refine box
+  // says exactly what it can filter on.
+  const liteResults = search.results.length > 0 && isLiteProfile(search.results[0]);
 
   const directoryHref = `/app/directory?mode=${search.mode}${trimmed ? `&q=${encodeURIComponent(trimmed)}` : ''}`;
 
@@ -143,14 +150,14 @@ function SearchPanel({ search, ownUid, onOpenResult, onClose }: { search: Search
             </div>
             <div className="mt-xs">
               <label htmlFor="header-search-refine" className="sr-only">
-                Refine these results by organization, institution or role
+                {liteResults ? 'Refine these results by role or organization' : 'Refine these results by organization, institution or role'}
               </label>
               <input
                 id="header-search-refine"
                 type="text"
                 value={search.refineText}
                 onChange={(e) => search.setRefineText(e.target.value)}
-                placeholder="Refine by organization, institution or role"
+                placeholder={liteResults ? 'Refine by role or organization' : 'Refine by organization, institution or role'}
                 className="field block w-full"
               />
             </div>
@@ -289,7 +296,7 @@ function SearchField({
 export function HeaderSearch() {
   const { user } = useAuth();
   const location = useLocation();
-  const search = useDirectorySearch({ pageSize: 8, initialMode: 'name' });
+  const search = useDirectorySearch({ pageSize: 8, initialMode: 'name', lite: true });
   const [open, setOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);

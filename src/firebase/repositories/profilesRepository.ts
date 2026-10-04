@@ -4,6 +4,7 @@ import {
   type Unsubscribe,
   deleteDoc,
   doc,
+  documentId,
   getDoc,
   getDocs,
   limit as fsLimit,
@@ -570,6 +571,36 @@ export async function getMemberProfile(uid: string): Promise<Profile | null> {
   const profile = await getProfile(uid);
   if (profile) rememberProfiles([profile]);
   return profile;
+}
+
+/**
+ * Full profiles for a known list of uids (e.g. one page of local name-search
+ * matches), in the SAME order as `uids`.
+ *
+ * Read cost: profiles already downloaded by an earlier search in the last few
+ * minutes come from the session cache (0 reads); the rest are fetched with a
+ * single query per 30 ids — billed per document returned plus ONE membership
+ * check, instead of an extra membership check on every individual getDoc().
+ * An id with no profile document (e.g. a member removed since the index was
+ * built) is simply left out.
+ */
+export async function getProfilesByIds(uids: string[]): Promise<Profile[]> {
+  const found = new Map<string, Profile>();
+  const missing: string[] = [];
+  for (const uid of uids) {
+    const cached = getRememberedProfile(uid);
+    if (cached) found.set(uid, cached);
+    else if (!missing.includes(uid)) missing.push(uid);
+  }
+  for (let i = 0; i < missing.length; i += 30) {
+    const chunk = missing.slice(i, i + 30);
+    // limit(30) is required: firestore.rules only allows profile list queries with a bounded limit.
+    const snapshot = await getDocs(query(profilesCollection(), where(documentId(), 'in', chunk), fsLimit(30)));
+    const fetched = snapshot.docs.map((d) => fromSnapshot(d.id, d.data()));
+    rememberProfiles(fetched);
+    for (const profile of fetched) found.set(profile.uid, profile);
+  }
+  return uids.map((uid) => found.get(uid)).filter((p): p is Profile => p !== undefined);
 }
 
 export async function getProfile(uid: string): Promise<Profile | null> {

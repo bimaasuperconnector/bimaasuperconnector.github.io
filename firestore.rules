@@ -614,6 +614,23 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
+    // Member-name index (2026-09-30). A compact, automation-written copy of
+    // each approved member's name/batch/role/photo that the browser downloads
+    // once and searches LOCALLY, so name search costs no Firestore reads (see
+    // src/lib/directoryIndex.ts and automation/src/directoryIndexJob.ts).
+    //  - Any approved member (admins are approved members too) may read it.
+    //    The `list` form is what the browser uses to fetch several changed
+    //    shards in ONE query; the limit ceiling matches the profiles rule.
+    //  - Nothing here is client-writable by anyone, admins included — only the
+    //    automation (Admin SDK, which bypasses these rules) writes it.
+    // Same visibility as the profile fields it copies: an approved member can
+    // already read all of them through the Directory.
+    match /directoryIndex/{docId} {
+      allow get: if callerIsApproved();
+      allow list: if callerIsApproved() && request.query.limit <= 30;
+      allow create, update, delete: if false;
+    }
+
     // Phase 9 (Jobs).
 
     function isValidJobShape(data) {

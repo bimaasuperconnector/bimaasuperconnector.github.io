@@ -4,8 +4,12 @@ import {
   type DirectoryMode,
   type DirectoryPage,
   type Profile,
+  getProfilesByIds,
   queryDirectory,
 } from '../firebase/repositories/profilesRepository';
+import { getDirectoryIndex, isDirectoryIndexReady, searchDirectoryByName } from './directoryIndex';
+import { liteProfileFromEntry } from './liteProfile';
+import type { IndexedEntry } from './nameSearch';
 
 /**
  * ONE search implementation shared by the header search bar and the
@@ -21,7 +25,13 @@ import {
  *    profile costs zero reads;
  *  - out-of-date responses are discarded instead of re-queried;
  *  - the header asks for small pages (8) and offers "Load more" /
- *    "Open in Directory" rather than pulling 24 profiles per keystroke.
+ *    "Open in Directory" rather than pulling 24 profiles per keystroke;
+ *  - NAME search runs against the local member-name index
+ *    (lib/directoryIndex.ts): any word of a name matches (first, middle,
+ *    last) and finding people costs ZERO Firestore reads. Only the profile
+ *    documents actually shown are fetched (none at all for the header's
+ *    `lite` rows). If the index isn't available yet, name search falls back
+ *    to the original server-side prefix query.
  */
 
 export type SearchPickerKind = 'batch' | 'badge' | 'chapter';
@@ -56,6 +66,7 @@ export function modeConfig(mode: DirectoryMode): SearchModeConfig {
 const LIVE_MODES: DirectoryMode[] = ['name', 'location'];
 const LIVE_MIN_CHARS = 2;
 const LIVE_DEBOUNCE_MS = 600;
+const LOCAL_DEBOUNCE_MS = 150;
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const CACHE_MAX = 60;
 
@@ -84,6 +95,49 @@ async function cachedFirstPage(mode: DirectoryMode, value: string, pageSize: num
   return page;
 }
 
+/** Where "Load more" continues from: a Firestore cursor, or a position in the local name matches. */
+type PageCursor =
+  | { kind: 'server'; doc: QueryDocumentSnapshot<DocumentData> }
+  | { kind: 'local'; matches: IndexedEntry[]; offset: number };
+
+interface SearchPageResult {
+  profiles: Profile[];
+  hasMore: boolean;
+  cursor: PageCursor | null;
+}
+
+/** One page of a local name search. `lite` pages are drawn from the index alone (0 reads). */
+async function localPage(
+  matches: IndexedEntry[],
+  offset: number,
+  pageSize: number,
+  lite: boolean,
+): Promise<SearchPageResult> {
+  const slice = matches.slice(offset, offset + pageSize);
+  const profiles = lite ? slice.map(liteProfileFromEntry) : await getProfilesByIds(slice.map((e) => e.uid));
+  const nextOffset = offset + slice.length;
+  const hasMore = nextOffset < matches.length;
+  return { profiles, hasMore, cursor: hasMore ? { kind: 'local', matches, offset: nextOffset } : null };
+}
+
+/**
+ * First page of any search. Name searches use the local index when it is
+ * available; every other mode (and the name fallback) uses the cached
+ * server-side query exactly as before.
+ */
+async function firstPage(mode: DirectoryMode, value: string, pageSize: number, lite: boolean): Promise<SearchPageResult> {
+  if (mode === 'name') {
+    const index = await getDirectoryIndex();
+    if (index) return localPage(searchDirectoryByName(index, value), 0, pageSize, lite);
+  }
+  const page = await cachedFirstPage(mode, value, pageSize);
+  return {
+    profiles: page.profiles,
+    hasMore: page.hasMore,
+    cursor: page.lastDoc ? { kind: 'server', doc: page.lastDoc } : null,
+  };
+}
+
 /** Same-page refine (organization / institution / role) — no query, no reads. */
 export function refineProfiles(profiles: Profile[], text: string): Profile[] {
   const needle = text.trim().toLowerCase();
@@ -92,6 +146,7 @@ export function refineProfiles(profiles: Profile[], text: string): Profile[] {
     const haystack = [
       profile.currentOrganizationName,
       profile.currentTitle,
+      profile.headline,
       ...profile.organizations.map((o) => `${o.name} ${o.title}`),
       ...profile.education.map((e) => `${e.institution} ${e.degree} ${e.field}`),
     ]
@@ -107,6 +162,12 @@ export interface UseDirectorySearchOptions {
   initialValue?: string;
   /** Run the initial (mode, value) immediately on mount. */
   runInitial?: boolean;
+  /**
+   * Draw name-search results straight from the local index — name, batch, role,
+   * photo and markers only, with ZERO profile reads (the header search). Without
+   * it, the profiles on the visible page are fetched in full (the Directory page).
+   */
+  lite?: boolean;
 }
 
 export function useDirectorySearch({
@@ -114,6 +175,7 @@ export function useDirectorySearch({
   initialMode = 'name',
   initialValue = '',
   runInitial = false,
+  lite = false,
 }: UseDirectorySearchOptions = {}) {
   const [mode, setModeState] = useState<DirectoryMode>(initialMode);
   const [value, setValue] = useState(initialValue);
@@ -124,7 +186,7 @@ export function useDirectorySearch({
   const [hasSearched, setHasSearched] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const cursorRef = useRef<QueryDocumentSnapshot<DocumentData> | null>(null);
+  const cursorRef = useRef<PageCursor | null>(null);
   const requestRef = useRef(0);
   // The (mode, value) the CURRENT results belong to, used by loadMore.
   const activeRef = useRef<{ mode: DirectoryMode; value: string }>({ mode: initialMode, value: initialValue });
@@ -138,9 +200,9 @@ export function useDirectorySearch({
       setLoading(true);
       setError(null);
       try {
-        const page = await cachedFirstPage(nextMode, nextValue, pageSize);
+        const page = await firstPage(nextMode, nextValue, pageSize, lite);
         if (request !== requestRef.current) return; // a newer search superseded this one
-        cursorRef.current = page.lastDoc;
+        cursorRef.current = page.cursor;
         setResults(page.profiles);
         setHasMore(page.hasMore);
         setHasSearched(true);
@@ -150,7 +212,7 @@ export function useDirectorySearch({
         if (request === requestRef.current) setLoading(false);
       }
     },
-    [pageSize],
+    [pageSize, lite],
   );
 
   const loadMore = useCallback(async () => {
@@ -160,14 +222,25 @@ export function useDirectorySearch({
     setLoading(true);
     setError(null);
     try {
-      const page = await queryDirectory({
-        mode: activeMode,
-        value: activeMode === 'batch' ? Number(activeValue) : activeValue,
-        pageSize,
-        cursor: cursorRef.current,
-      });
+      const cursor = cursorRef.current;
+      let page: SearchPageResult;
+      if (cursor.kind === 'local') {
+        page = await localPage(cursor.matches, cursor.offset, pageSize, lite);
+      } else {
+        const serverPage = await queryDirectory({
+          mode: activeMode,
+          value: activeMode === 'batch' ? Number(activeValue) : activeValue,
+          pageSize,
+          cursor: cursor.doc,
+        });
+        page = {
+          profiles: serverPage.profiles,
+          hasMore: serverPage.hasMore,
+          cursor: serverPage.lastDoc ? { kind: 'server', doc: serverPage.lastDoc } : null,
+        };
+      }
       if (request !== requestRef.current) return;
-      cursorRef.current = page.lastDoc;
+      cursorRef.current = page.cursor;
       setResults((prev) => [...prev, ...page.profiles]);
       setHasMore(page.hasMore);
     } catch {
@@ -175,7 +248,7 @@ export function useDirectorySearch({
     } finally {
       if (request === requestRef.current) setLoading(false);
     }
-  }, [pageSize]);
+  }, [pageSize, lite]);
 
   const reset = useCallback(() => {
     requestRef.current++;
@@ -207,9 +280,12 @@ export function useDirectorySearch({
     if (trimmed.length < LIVE_MIN_CHARS) return;
     const active = activeRef.current;
     if (active.mode === mode && active.value.trim().toLowerCase() === trimmed.toLowerCase() && hasSearched) return;
-    const timer = window.setTimeout(() => void run(mode, trimmed), LIVE_DEBOUNCE_MS);
+    // Lite name search over the already-loaded local index costs nothing, so it can react
+    // almost instantly; anything that reads from Firestore keeps the longer pause.
+    const free = lite && mode === 'name' && isDirectoryIndexReady();
+    const timer = window.setTimeout(() => void run(mode, trimmed), free ? LOCAL_DEBOUNCE_MS : LIVE_DEBOUNCE_MS);
     return () => window.clearTimeout(timer);
-  }, [mode, value, run, hasSearched]);
+  }, [mode, value, run, hasSearched, lite]);
 
   // Optional one-time run for a deep link (?mode=…&q=…).
   const ranInitial = useRef(false);

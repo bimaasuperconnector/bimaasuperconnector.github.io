@@ -8,6 +8,7 @@ import {
 } from 'react';
 import { GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signOut, type User } from 'firebase/auth';
 import { auth, firebaseConfigured } from '../firebase/init';
+import { clearDirectoryIndexCache } from '../lib/directoryIndex';
 
 interface AuthContextValue {
   user: User | null;
@@ -30,6 +31,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
     const unsubscribe = onAuthStateChanged(auth, (nextUser) => {
+      // Signed out (by any route): don't leave the downloaded member list in this browser.
+      if (!nextUser) clearDirectoryIndexCache();
       setUser(nextUser);
       setLoading(false);
     });
