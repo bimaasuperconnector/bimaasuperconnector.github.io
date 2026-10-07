@@ -39,7 +39,8 @@ export function ProfilePage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [contact, setContact] = useState<ProfileContact>(emptyProfileContact());
   const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState(false);
+  // "?edit=1" (from the Home progress card) opens the form straight away.
+  const [editing, setEditing] = useState(() => new URLSearchParams(window.location.search).get('edit') === '1');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // ImageKit file IDs, for cleanup AFTER a successful save only (see

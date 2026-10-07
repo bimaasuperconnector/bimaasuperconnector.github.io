@@ -5,13 +5,15 @@ import { useUserRecord } from '../../context/UserRecordContext';
 import { useOwnProfile } from '../../context/OwnProfileContext';
 import { PageHeader, SkeletonList } from '../../components/ui/PageHeader';
 import { NotificationItem } from '../../components/notifications/NotificationItem';
+import { ProfileCompletionCard } from '../../components/home/ProfileCompletionCard';
+import { EventPassCard } from '../../components/home/EventPassCard';
+import { type EventPass, loadUpcomingEventPasses } from '../../firebase/repositories/eventPassesRepository';
 import { currentCycle, formatCycleDates } from '../../lib/cycles';
 import { getCycleState } from '../../firebase/repositories/cyclesRepository';
 import { getOwnRegistration, type Registration } from '../../firebase/repositories/registrationsRepository';
 import { listOwnNotifications, type Notification } from '../../firebase/repositories/notificationsRepository';
 import { loadAdminMetrics, type AdminMetrics } from '../../firebase/repositories/adminMetricsRepository';
 import {
-  ProfileIcon,
   DirectoryIcon,
   SuperConnectorIcon,
   JobsIcon,
@@ -54,6 +56,7 @@ export function AppHomePage() {
   const [registration, setRegistration] = useState<Registration | null>(null);
   const [registrationOpen, setRegistrationOpen] = useState(true);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [passes, setPasses] = useState<EventPass[]>([]);
   const [adminMetrics, setAdminMetrics] = useState<AdminMetrics | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -72,6 +75,10 @@ export function AppHomePage() {
       // Only the 3 newest are needed for the preview (was: the whole history).
       listOwnNotifications(user.uid, 3).then((latest) => {
         if (!cancelled) setNotifications(latest);
+      }),
+      // Upcoming RSVPs: cached for the session — see eventPassesRepository.
+      loadUpcomingEventPasses(user.uid).then((list) => {
+        if (!cancelled) setPasses(list);
       }),
     ];
 
@@ -97,7 +104,6 @@ export function AppHomePage() {
   }, [user, isAnyAdmin]);
 
   const firstName = user?.displayName?.split(' ')[0] ?? profile?.displayName?.split(' ')[0];
-  const profileLoading = !profileLoaded;
 
   return (
     <div className="space-y-xl">
@@ -136,27 +142,34 @@ export function AppHomePage() {
           </Link>
         </section>
 
-        {/* Profile completeness */}
-        <section className="surface-card p-lg md:p-xl">
-          <div className="flex items-center gap-sm text-ink">
-            <ProfileIcon />
-            <h2 className="font-haas-disp text-title-md text-ink">Your profile</h2>
-          </div>
-          {profileLoading ? (
-            <div className="skeleton mt-md h-10" />
-          ) : profile?.isComplete ? (
-            <p className="mt-sm text-body-md text-success">Complete — batch, headline and bio are all set.</p>
-          ) : (
-            <p className="copy mt-sm">Add a batch and headline so other alumni can find and recognize you.</p>
-          )}
-          <Link
-            to="/app/profile"
-            className="mt-lg inline-flex min-h-[44px] items-center rounded-lg border border-hairline bg-canvas px-lg text-button text-ink active:bg-surface-strong"
-          >
-            {profile?.isComplete ? 'Edit your profile' : 'Complete your profile'}
-          </Link>
-        </section>
+        {/* Profile completeness: computed from the live profile, zero extra reads */}
+        {profileLoaded ? (
+          <ProfileCompletionCard profile={profile} />
+        ) : (
+          <div className="skeleton h-[220px]" aria-hidden="true" />
+        )}
       </div>
+
+      {/* Upcoming events the member has RSVPed to */}
+      {passes.length > 0 && (
+        <section className="fade-enter" aria-labelledby="your-passes">
+          <div className="flex items-center justify-between gap-md">
+            <h2 id="your-passes" className="font-haas-disp text-title-md text-ink">
+              Your upcoming events
+            </h2>
+            {passes.length > 3 && (
+              <Link to="/app/events" className="inline-flex min-h-[44px] items-center text-body-md text-link">
+                All events →
+              </Link>
+            )}
+          </div>
+          <div className="mt-md grid gap-sm sm:grid-cols-2 lg:grid-cols-3">
+            {passes.slice(0, 3).map((pass) => (
+              <EventPassCard key={pass.eventId} pass={pass} />
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Admin snapshot: only rendered for an admin viewer */}
       {isAnyAdmin && adminMetrics && (

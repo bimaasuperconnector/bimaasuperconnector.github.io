@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useOwnProfile } from '../../context/OwnProfileContext';
 import { Button } from '../../components/ui/Button';
@@ -26,6 +27,7 @@ import {
   type EventTargeting,
   isValidCapacity,
 } from '../../lib/events';
+import { invalidateEventPasses } from '../../firebase/repositories/eventPassesRepository';
 import { type ReportReason, REPORT_REASONS, reportEvent } from '../../firebase/repositories/reportsRepository';
 
 const REPORT_REASON_LABELS: Record<ReportReason, string> = {
@@ -217,6 +219,8 @@ function ManageEventPanel({
 
 export function EventsPage() {
   const { user } = useAuth();
+  const { hash } = useLocation();
+  const [highlightId, setHighlightId] = useState<string | null>(null);
   // The member's own profile comes from the shell's single live listener —
   // no separate read for the batch/city needed to compute event visibility.
   const { profile, loaded: profileLoaded } = useOwnProfile();
@@ -267,6 +271,19 @@ export function EventsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, profileLoaded]);
 
+  // Deep link from the Home event pass (/app/events#event-<id>): once the
+  // list has rendered, scroll to that card and flash a ring around it.
+  useEffect(() => {
+    if (loading || !hash.startsWith('#event-')) return;
+    const id = hash.slice('#event-'.length);
+    const el = document.getElementById(`event-${id}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'center' });
+    setHighlightId(id);
+    const t = window.setTimeout(() => setHighlightId(null), 2600);
+    return () => window.clearTimeout(t);
+  }, [loading, hash, events]);
+
   async function handleCreate() {
     if (!user) return;
     setCreating(true);
@@ -287,12 +304,14 @@ export function EventsPage() {
   async function handleRespond(event: AlumniEvent, status: 'attending' | 'waitlisted') {
     if (!user) return;
     await upsertRsvp(event.id, user.uid, event.organizerUid, status);
+    invalidateEventPasses(user.uid);
     setMyRsvps((prev) => ({ ...prev, [event.id]: status }));
   }
 
   async function handleWithdraw(eventId: string) {
     if (!user) return;
     await withdrawRsvp(eventId, user.uid);
+    invalidateEventPasses(user.uid);
     setMyRsvps((prev) => {
       const next = { ...prev };
       delete next[eventId];
@@ -487,7 +506,7 @@ export function EventsPage() {
           </h2>
           <div className="mt-md space-y-lg">
             {myOrganizedEvents.map((event) => (
-              <div key={event.id}>
+              <div key={event.id} id={`event-${event.id}`} className={`scroll-mt-24 rounded-lg transition-shadow duration-500 ${highlightId === event.id ? 'ring-2 ring-info-border ring-offset-2' : ''}`}>
                 <EventCard
                   event={event}
                   myRsvpStatus={myRsvps[event.id] ?? null}
@@ -526,7 +545,7 @@ export function EventsPage() {
           ) : (
             <div className="space-y-lg">
               {otherUpcomingEvents.map((event) => (
-                <div key={event.id}>
+                <div key={event.id} id={`event-${event.id}`} className={`scroll-mt-24 rounded-lg transition-shadow duration-500 ${highlightId === event.id ? 'ring-2 ring-info-border ring-offset-2' : ''}`}>
                   <EventCard
                     event={event}
                     myRsvpStatus={myRsvps[event.id] ?? null}
