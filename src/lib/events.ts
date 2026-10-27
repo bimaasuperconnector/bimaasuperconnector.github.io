@@ -131,6 +131,15 @@ export function canViewEvent(
   }
 }
 
+/**
+ * True once an event's END time has passed. Finished events are never shown
+ * anywhere in the app (Events page, Home pass) — an event on 5 Oct is gone
+ * from the moment it ends. An event that is in progress is NOT ended.
+ */
+export function hasEventEnded(endTime: Date, now: Date = new Date()): boolean {
+  return endTime.getTime() <= now.getTime();
+}
+
 export interface RsvpWindowInput {
   status: EventStatus;
   startTime: Date;

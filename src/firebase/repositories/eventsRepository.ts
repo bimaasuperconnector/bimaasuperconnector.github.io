@@ -18,6 +18,7 @@ import {
 import type { User as FirebaseUser } from 'firebase/auth';
 import { db } from '../init';
 import {
+  hasEventEnded,
   type EventFormat,
   type EventStatus,
   type EventTargetType,
@@ -266,7 +267,9 @@ function visibleEventsKey(viewer: VisibleEventsViewer): string {
 export async function queryVisibleEvents(viewer: VisibleEventsViewer): Promise<AlumniEvent[]> {
   const key = visibleEventsKey(viewer);
   if (visibleEventsCache && visibleEventsCache.key === key && Date.now() - visibleEventsCache.at < VISIBLE_EVENTS_TTL_MS) {
-    return visibleEventsCache.events;
+    // An event can end while the cached list is still fresh — drop it
+    // without touching Firestore.
+    return visibleEventsCache.events.filter((e) => !hasEventEnded(e.endTime));
   }
   const events = await fetchVisibleEvents(viewer);
   visibleEventsCache = { key, at: Date.now(), events };
@@ -275,9 +278,18 @@ export async function queryVisibleEvents(viewer: VisibleEventsViewer): Promise<A
 
 async function fetchVisibleEvents(viewer: VisibleEventsViewer): Promise<AlumniEvent[]> {
   const col = eventsCollection();
+  // ROOT-CAUSE FIX: every query below used to be `orderBy('startTime')` with
+  // NO time filter, so past events were downloaded, shown, and — because the
+  // order was oldest-first with a 50-document cap — eventually crowded the
+  // genuinely upcoming ones out of the result. Each query now asks Firestore
+  // only for events whose END time is still in the future, so finished events
+  // are never read, never billed and never rendered. Range + orderBy are on
+  // the same field (endTime), which is what Firestore requires; the matching
+  // composite indexes are in firestore.indexes.json.
+  const notEnded = where('endTime', '>', Timestamp.now());
   const queries = [
-    query(col, where('targetType', '==', 'everyone'), orderBy('startTime', 'asc'), fsLimit(VISIBLE_EVENTS_PAGE_SIZE)),
-    query(col, where('organizerUid', '==', viewer.uid), orderBy('startTime', 'desc'), fsLimit(VISIBLE_EVENTS_PAGE_SIZE)),
+    query(col, where('targetType', '==', 'everyone'), notEnded, orderBy('endTime', 'asc'), fsLimit(VISIBLE_EVENTS_PAGE_SIZE)),
+    query(col, where('organizerUid', '==', viewer.uid), notEnded, orderBy('endTime', 'asc'), fsLimit(VISIBLE_EVENTS_PAGE_SIZE)),
   ];
   if (viewer.batchNumber != null) {
     queries.push(
@@ -285,7 +297,7 @@ async function fetchVisibleEvents(viewer: VisibleEventsViewer): Promise<AlumniEv
         col,
         where('targetType', '==', 'batch'),
         where('targetBatchNumbers', 'array-contains', viewer.batchNumber),
-        orderBy('startTime', 'asc'),
+        notEnded, orderBy('endTime', 'asc'),
         fsLimit(VISIBLE_EVENTS_PAGE_SIZE),
       ),
     );
@@ -296,7 +308,7 @@ async function fetchVisibleEvents(viewer: VisibleEventsViewer): Promise<AlumniEv
         col,
         where('targetType', '==', 'city'),
         where('targetCityLower', '==', viewer.cityCanonicalLower),
-        orderBy('startTime', 'asc'),
+        notEnded, orderBy('endTime', 'asc'),
         fsLimit(VISIBLE_EVENTS_PAGE_SIZE),
       ),
     );
@@ -313,7 +325,7 @@ async function fetchVisibleEvents(viewer: VisibleEventsViewer): Promise<AlumniEv
         col,
         where('targetType', '==', 'chapter'),
         where('targetChapterIds', 'array-contains', chapterId),
-        orderBy('startTime', 'asc'),
+        notEnded, orderBy('endTime', 'asc'),
         fsLimit(VISIBLE_EVENTS_PAGE_SIZE),
       ),
     );
@@ -324,7 +336,7 @@ async function fetchVisibleEvents(viewer: VisibleEventsViewer): Promise<AlumniEv
         col,
         where('targetType', '==', 'badge'),
         where('targetBadgeIds', 'array-contains', badgeId),
-        orderBy('startTime', 'asc'),
+        notEnded, orderBy('endTime', 'asc'),
         fsLimit(VISIBLE_EVENTS_PAGE_SIZE),
       ),
     );
@@ -334,7 +346,7 @@ async function fetchVisibleEvents(viewer: VisibleEventsViewer): Promise<AlumniEv
       col,
       where('targetType', '==', 'selected'),
       where('targetUids', 'array-contains', viewer.uid),
-      orderBy('startTime', 'asc'),
+      notEnded, orderBy('endTime', 'asc'),
       fsLimit(VISIBLE_EVENTS_PAGE_SIZE),
     ),
   );
@@ -346,7 +358,12 @@ async function fetchVisibleEvents(viewer: VisibleEventsViewer): Promise<AlumniEv
       byId.set(docSnap.id, fromSnapshot(docSnap.id, docSnap.data()));
     }
   }
-  return Array.from(byId.values()).sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
+  // Defence in depth: the queries already exclude ended events, but a
+  // malformed document (missing endTime) falls back to `new Date()` in
+  // fromSnapshot, so this guarantees nothing finished is ever returned.
+  return Array.from(byId.values())
+    .filter((e) => !hasEventEnded(e.endTime))
+    .sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
 }
 
 /** Confirmed-attendee count for one event — a single count() aggregation, not a document download. See computeAvailability() in src/lib/events.ts for the accepted race-condition caveat this implies at RSVP time. */

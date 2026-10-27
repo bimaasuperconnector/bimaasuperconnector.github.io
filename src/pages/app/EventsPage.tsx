@@ -25,6 +25,7 @@ import {
   EMPTY_EVENT_TARGETING,
   type EventRsvpStatus,
   type EventTargeting,
+  hasEventEnded,
   isValidCapacity,
 } from '../../lib/events';
 import { invalidateEventPasses } from '../../firebase/repositories/eventPassesRepository';
@@ -330,8 +331,10 @@ export function EventsPage() {
     (targeting.targetType !== 'badge' || targeting.targetBadgeIds.length > 0) &&
     (targeting.targetType !== 'selected' || targeting.targetUids.length > 0);
 
-  const myOrganizedEvents = events.filter((e) => e.organizerUid === user?.uid);
-  const otherUpcomingEvents = events
+  // Never show a finished event, even if the tab was left open past its end.
+  const liveEvents = events.filter((e) => !hasEventEnded(e.endTime));
+  const myOrganizedEvents = liveEvents.filter((e) => e.organizerUid === user?.uid);
+  const otherUpcomingEvents = liveEvents
     .filter((e) => e.organizerUid !== user?.uid && e.status !== 'cancelled')
     .sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
 

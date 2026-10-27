@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   canViewEvent,
+  hasEventEnded,
   targetingSummary,
   computeAvailability,
   isRsvpWindowOpen,
@@ -239,5 +240,25 @@ describe('isValidEventTargeting', () => {
     const many = Array.from({ length: 11 }, (_, i) => `id${i}`);
     expect(isValidEventTargeting({ ...base, targetType: 'chapter', targetChapterIds: many, targetLabels: many })).toBe(false);
     expect(isValidEventTargeting({ ...base, targetType: 'badge', targetBadgeIds: many, targetLabels: many })).toBe(false);
+  });
+});
+
+describe('hasEventEnded', () => {
+  const end = new Date('2026-10-05T18:00:00+05:30');
+
+  it('is false while the event has not finished', () => {
+    expect(hasEventEnded(end, new Date('2026-10-05T17:59:59+05:30'))).toBe(false);
+  });
+
+  it('is true from the moment the event ends', () => {
+    expect(hasEventEnded(end, new Date('2026-10-05T18:00:00+05:30'))).toBe(true);
+  });
+
+  it('hides a 5 Oct event on 6 Oct', () => {
+    expect(hasEventEnded(end, new Date('2026-10-06T00:00:01+05:30'))).toBe(true);
+  });
+
+  it('keeps an in-progress multi-day event visible', () => {
+    expect(hasEventEnded(new Date('2026-10-07T18:00:00+05:30'), new Date('2026-10-06T09:00:00+05:30'))).toBe(false);
   });
 });
