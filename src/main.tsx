@@ -3,6 +3,10 @@ import { createRoot } from 'react-dom/client';
 import { registerSW } from 'virtual:pwa-register';
 import { App } from './App';
 import './styles/index.css';
+import { initPwaInstallCapture } from './lib/pwa';
+
+// Must run before anything else: the browser's install prompt fires once, early.
+initPwaInstallCapture();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

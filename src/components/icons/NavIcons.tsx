@@ -333,3 +333,25 @@ export function PencilIcon(props: IconProps) {
     </svg>
   );
 }
+
+/* "App" section of the account menu */
+
+export function InstallAppIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <rect x="6" y="3.5" width="12" height="17" rx="2.5" />
+      <path d="M12 8v5.5M9.6 11.3 12 13.7l2.4-2.4" />
+      <path d="M10.5 17.5h3" />
+    </svg>
+  );
+}
+
+export function GuideIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M5 5.5A1.5 1.5 0 0 1 6.5 4H19v14H6.5A1.5 1.5 0 0 0 5 19.5v-14Z" />
+      <path d="M5 19.5A1.5 1.5 0 0 0 6.5 21H19v-3" />
+      <path d="M9 8.5h6M9 12h4" />
+    </svg>
+  );
+}

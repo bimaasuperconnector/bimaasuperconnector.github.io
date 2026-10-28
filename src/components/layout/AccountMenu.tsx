@@ -3,6 +3,9 @@ import { Link } from 'react-router-dom';
 import { Avatar } from '../ui/Avatar';
 import { AdminIcon, ProfileIcon, SignOutIcon } from '../icons/NavIcons';
 import { useDismiss } from './usePopover';
+import { AppSection } from '../pwa/AppSection';
+import { AppGuideDialog } from '../pwa/AppGuideDialog';
+import { useAppActions, type GuideTab } from '../pwa/useAppActions';
 
 /**
  * The account control: ONLY the member's uploaded profile photo (or the
@@ -27,7 +30,15 @@ export function AccountMenu({
   const wrapRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
 
+  const [guideTab, setGuideTab] = useState<GuideTab | null>(null);
+
   const close = useCallback(() => setOpen(false), []);
+  const openGuide = useCallback((tab: GuideTab) => {
+    setOpen(false);
+    setGuideTab(tab);
+  }, []);
+  const closeGuide = useCallback(() => setGuideTab(null), []);
+  const actions = useAppActions(openGuide);
   useDismiss(wrapRef, open, close);
 
   const itemClass =
@@ -54,7 +65,7 @@ export function AccountMenu({
         <div
           role="menu"
           aria-label="Account"
-          className="pop-enter absolute right-0 top-[calc(100%+8px)] z-50 w-[280px] max-w-[calc(100vw-24px)] rounded-lg border border-hairline bg-canvas p-xs shadow-[0_12px_32px_rgba(24,29,38,0.14)]"
+          className="pop-enter absolute right-0 top-[calc(100%+8px)] z-50 max-h-[calc(100dvh-88px)] w-[300px] max-w-[calc(100vw-24px)] overflow-y-auto rounded-lg border border-hairline bg-canvas p-xs shadow-[0_12px_32px_rgba(24,29,38,0.14)]"
         >
           <div className="flex items-center gap-sm px-sm py-sm">
             <Avatar src={photoURL} sizeClass="h-10 w-10" />
@@ -73,6 +84,8 @@ export function AccountMenu({
             </Link>
           )}
           <div className="my-xs border-t border-hairline" />
+          <AppSection actions={actions} itemClass={itemClass} onOpenGuide={openGuide} onCloseMenu={close} />
+          <div className="my-xs border-t border-hairline" />
           <button
             type="button"
             role="menuitem"
@@ -86,6 +99,8 @@ export function AccountMenu({
           </button>
         </div>
       )}
+
+      {guideTab && <AppGuideDialog onClose={closeGuide} initialTab={guideTab} actions={actions} />}
     </div>
   );
 }
