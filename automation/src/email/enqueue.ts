@@ -1,6 +1,6 @@
 import { Timestamp, type DocumentData } from 'firebase-admin/firestore';
 import { db } from '../firebaseAdmin';
-import { CURRENT_MAX_BATCH_NUMBER, isValidBatchNumber } from '../../../src/lib/batches';
+import { currentMaxBatchNumber, isValidBatchNumber } from '../../../src/lib/batches';
 import {
   BIRTHDAY_CATCHUP_DAYS,
   REMINDER_TYPES,
@@ -163,7 +163,7 @@ export async function enqueueReminders(ctx: RunContext): Promise<void> {
   if (!inWindow) return;
   const targets = ctx.config.targetBatches.length
     ? ctx.config.targetBatches.filter(isValidBatchNumber)
-    : Array.from({ length: CURRENT_MAX_BATCH_NUMBER }, (_, i) => i + 1);
+    : Array.from({ length: currentMaxBatchNumber() }, (_, i) => i + 1);
   for (const type of REMINDER_TYPES) {
     const enabled = type === 'meetup' ? ctx.config.meetupEnabled : ctx.config.jobsEnabled;
     if (!enabled || ctx.force.reminders.has(type)) continue;

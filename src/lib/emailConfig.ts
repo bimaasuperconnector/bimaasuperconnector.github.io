@@ -8,7 +8,7 @@
 
 export const EMAIL_SENDER_ADDRESS = 'bimaasuperconnector@gmail.com';
 export const EMAIL_SENDER_NAME = 'BIMAA SuperConnector';
-export const APP_URL = 'https://bimaasuperconnector.github.io/';
+export const APP_URL = 'https://bimalumni.in/';
 
 /** Hard ceiling of individual recipients per IST day (welcome + birthday combined). Never raised by config. */
 export const INDIVIDUAL_DAILY_HARD_LIMIT = 90;

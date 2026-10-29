@@ -233,7 +233,7 @@ export function IphoneBrowser({ variant }: { variant: 'bottom' | 'top' | 'menu' 
             <rect x={108} y={168} width={104} height={43} fill={C.soft} />
             <rect x={116} y={172} width={88} height={15} rx={7.5} fill={C.white} stroke={C.hair} />
             <T x={160} y={182} size={6.5} fill={C.muted} anchor="middle">
-              bimaasuperconnector.github.io
+              bimalumni.in
             </T>
             <g stroke={C.ink} strokeWidth={1.4} fill="none" strokeLinecap="round" strokeLinejoin="round">
               <path d="m122 198-4 3.5 4 3.5" />
@@ -313,7 +313,7 @@ export function IphoneAddScreen() {
           SuperConnector
         </T>
         <T x={154} y={110} size={5.8} fill={C.muted}>
-          bimaasuperconnector.github.io
+          bimalumni.in
         </T>
         <line x1={114} y1={134} x2={206} y2={134} stroke={C.hair} />
         <rect x={114} y={138} width={92} height={22} rx={9} fill={C.white} />
@@ -389,7 +389,7 @@ export function IpadBrowser() {
         </g>
         <rect x={92} y={21} width={118} height={18} rx={9} fill={C.white} stroke={C.hair} />
         <T x={151} y={33} size={7} fill={C.muted} anchor="middle">
-          bimaasuperconnector.github.io
+          bimalumni.in
         </T>
         <Hit x={236} y={19} w={22} h={22} r={11} />
         <ShareGlyph x={247} y={30} s={0.9} />
@@ -484,7 +484,7 @@ export function IpadAddScreen() {
     <Scene label="iPad Add to Home Screen dialog with the Add button highlighted">
       <Tablet>
         <rect x={29} y={13} width={262} height={194} rx={11} fill={C.ink} fillOpacity={0.18} />
-        <Dialog x={80} y={62} w={160} title="SuperConnector" subtitle="bimaasuperconnector.github.io" primary="Add" />
+        <Dialog x={80} y={62} w={160} title="SuperConnector" subtitle="bimalumni.in" primary="Add" />
       </Tablet>
       <Tag x={34} y={190} text="Tap Add" />
     </Scene>
@@ -608,7 +608,7 @@ function Window({
       </g>
       <rect x={64} y={38} width={198} height={14} rx={7} fill={C.soft} stroke={C.hair} />
       <T x={92} y={48} size={6.5} fill={C.muted}>
-        bimaasuperconnector.github.io
+        bimalumni.in
       </T>
       {addressInstall && (
         <g>
@@ -778,7 +778,7 @@ export function MacAddToDock() {
     <Scene label="Safari Add to Dock dialog with the Add button highlighted">
       <rect x={14} y={14} width={292} height={184} rx={9} fill={C.white} stroke={C.border} />
       <rect x={14} y={14} width={292} height={184} rx={9} fill={C.ink} fillOpacity={0.15} />
-      <Dialog x={80} y={72} w={160} title="SuperConnector" subtitle="bimaasuperconnector.github.io" primary="Add" />
+      <Dialog x={80} y={72} w={160} title="SuperConnector" subtitle="bimalumni.in" primary="Add" />
       <Tag x={20} y={178} text="Click Add" />
     </Scene>
   );
@@ -822,7 +822,7 @@ export function NotificationPromptDesktop({ os }: { os: 'windows' | 'mac' }) {
         <rect x={63} y={62} width={150} height={66} rx={8} fill={C.ink} fillOpacity={0.08} />
         <rect x={62} y={60} width={150} height={66} rx={8} fill={C.white} stroke={C.hair} />
         <T x={72} y={76} size={7} weight={600}>
-          bimaasuperconnector.github.io
+          bimalumni.in
         </T>
         <T x={72} y={88} size={6.8} fill={C.muted}>
           wants to show notifications

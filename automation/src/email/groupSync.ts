@@ -1,6 +1,6 @@
 import { FieldPath, Timestamp, type DocumentData } from 'firebase-admin/firestore';
 import { db } from '../firebaseAdmin';
-import { CURRENT_MAX_BATCH_NUMBER, isValidBatchNumber } from '../../../src/lib/batches';
+import { currentMaxBatchNumber, isValidBatchNumber } from '../../../src/lib/batches';
 import { isValidEmail, istDate, welcomeQueueId } from '../../../src/lib/emailConfig';
 import { createIfAbsent, reportsCol, ts, type RunContext } from './context';
 
@@ -64,7 +64,7 @@ async function queueWelcome(ctx: RunContext, uid: string, u: ReturnType<typeof r
 }
 
 async function writeReports(ctx: RunContext, desired: Map<number, Change[]>, replaceAll: Map<number, Set<string>> | null) {
-  const batches = replaceAll ? Array.from({ length: CURRENT_MAX_BATCH_NUMBER }, (_, i) => i + 1) : [...desired.keys()];
+  const batches = replaceAll ? Array.from({ length: currentMaxBatchNumber() }, (_, i) => i + 1) : [...desired.keys()];
   if (batches.length === 0) return;
   const refs = batches.map((n) => reportsCol().doc(String(n)));
   const snaps = await db.getAll(...refs);

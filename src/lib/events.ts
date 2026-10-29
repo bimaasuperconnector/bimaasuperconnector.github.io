@@ -1,3 +1,4 @@
+import { currentMaxBatchNumber } from './batches';
 /**
  * Pure, testable helpers for Phase 13 (Events & meetups). Kept free of
  * any Firestore import, same precedent as src/lib/matching/* and
@@ -42,8 +43,8 @@ export type EventStatus = (typeof EVENT_STATUSES)[number];
 export const EVENT_RSVP_STATUSES = ['attending', 'waitlisted', 'cancelled'] as const;
 export type EventRsvpStatus = (typeof EVENT_RSVP_STATUSES)[number];
 
-/** Mirrors firestore.rules' isValidEventTargeting size caps. */
-export const MAX_TARGET_BATCH_NUMBERS = 43;
+/** Mirrors firestore.rules' isValidEventTargeting size caps. The batch cap is the number of batches that exist (it grows each January). */
+export const maxTargetBatchNumbers = (): number => currentMaxBatchNumber();
 export const MAX_TARGET_UIDS = 50;
 /** Mirrors firestore.rules' isValidEventTargeting caps for chapter / badge targeting. */
 export const MAX_TARGET_CHAPTERS = 10;
@@ -186,7 +187,7 @@ export function isValidCapacity(capacity: number | null): boolean {
 
 export function isValidEventTargeting(t: EventTargeting): boolean {
   if (!EVENT_TARGET_TYPES.includes(t.targetType)) return false;
-  if (t.targetBatchNumbers.length > MAX_TARGET_BATCH_NUMBERS) return false;
+  if (t.targetBatchNumbers.length > maxTargetBatchNumbers()) return false;
   if (t.targetUids.length > MAX_TARGET_UIDS) return false;
   if (t.targetChapterIds.length > MAX_TARGET_CHAPTERS) return false;
   if (t.targetBadgeIds.length > MAX_TARGET_BADGES) return false;

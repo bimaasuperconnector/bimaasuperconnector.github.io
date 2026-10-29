@@ -66,7 +66,7 @@ describe('email templates', () => {
     expect(r.html).not.toContain('<b>Asha');
     expect(r.html).toContain('&lt;b&gt;');
     expect(r.html).toContain('<ul');
-    expect(r.html).toContain('<a href="https://bimaasuperconnector.github.io/"');
+    expect(r.html).toContain('<a href="https://bimalumni.in/"');
   });
   it('keeps unknown placeholders visible and detects them', () => {
     expect(substitute('Hi {{nope}}', {})).toBe('Hi {{nope}}');
@@ -85,5 +85,16 @@ describe('email templates', () => {
     expect(v.saturdayDate).toBe('Saturday, 17 October');
     expect(v.sundayDate).toBe('Sunday, 18 October');
     expect(v.registrationDeadline).toBe('Thursday, 15 October, 11:59 PM IST');
+  });
+});
+
+describe('batches grow automatically each year', () => {
+  it('adds one batch every calendar year (BIM43 in 2026, BIM44 in 2027)', async () => {
+    const { maxBatchNumberAt, batchLabel } = await import('../batches');
+    expect(maxBatchNumberAt(new Date('2026-12-31T23:59:59Z'))).toBe(43);
+    expect(maxBatchNumberAt(new Date('2027-01-01T00:00:00Z'))).toBe(44);
+    expect(maxBatchNumberAt(new Date('2035-06-01T00:00:00Z'))).toBe(52);
+    expect(maxBatchNumberAt(new Date('1970-01-01T00:00:00Z'))).toBe(43); // wrong device clock never shrinks the list
+    expect(batchLabel(44)).toBe('BIM44 (2027\u20132029)');
   });
 });

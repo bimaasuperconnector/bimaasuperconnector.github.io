@@ -10,7 +10,7 @@ export const LEGAL = {
   institution: 'BIM, Trichy',
   serviceName: 'SuperConnector',
   contactEmail: 'bimaasuperconnector@gmail.com',
-  siteUrl: 'https://bimaasuperconnector.github.io',
+  siteUrl: 'https://bimalumni.in',
   /** Shown as "Effective date" and "Last updated" on both pages. */
   effectiveDate: '1 October 2026',
   /** Governing law named in the Terms. */

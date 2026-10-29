@@ -229,7 +229,7 @@ const firefoxDesktop: BrowserGuide = {
   label: 'Firefox',
   note: 'Firefox on desktop can’t install web apps. Open SuperConnector in Edge or Chrome to install it. You can still use it in Firefox as a normal website, and bookmark it.',
   steps: [
-    { title: 'Switch browser to install', body: 'Copy the address bimaasuperconnector.github.io into Edge or Chrome, then follow that browser’s steps.' },
+    { title: 'Switch browser to install', body: 'Copy the address bimalumni.in into Edge or Chrome, then follow that browser’s steps.' },
     { title: 'Prefer to stay in Firefox?', body: 'Press Ctrl+D (Cmd+D on Mac) to bookmark it. You can also pin the tab: right-click the tab → Pin Tab.' },
   ],
 };

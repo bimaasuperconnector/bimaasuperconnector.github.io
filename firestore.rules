@@ -70,12 +70,19 @@ service cloud.firestore {
             && callerCoversBatch(get(/databases/$(database)/documents/users/$(applicantUid)).data.batchNumber));
     }
 
-    // Keep this ceiling in sync with CURRENT_MAX_BATCH_NUMBER in
-    // src/lib/batches.ts. null is allowed on profiles (batch not yet
-    // selected there) but NOT on users (batch is mandatory at onboarding
-    // — see the onboarding revision in FEATURE_SUPERCONNECTOR.md).
+    // Newest batch that exists: one new batch every calendar year
+    // (BIM43 = 2026–2028, so BIM44 from 1 Jan 2027, …). Same formula as
+    // currentMaxBatchNumber() in src/lib/batches.ts, evaluated on the
+    // SERVER clock, so a new batch becomes valid on its own on 1 January
+    // (UTC) with no rules change. null is allowed on profiles (batch not
+    // yet selected there) but NOT on users (batch is mandatory at
+    // onboarding).
+    function currentMaxBatch() {
+      return request.time.year() - 1983;
+    }
+
     function isValidBatchNumber(n) {
-      return n is int && n >= 1 && n <= 43;
+      return n is int && n >= 1 && n <= currentMaxBatch();
     }
 
     function isValidBatchNumberOrNull(n) {
@@ -851,8 +858,8 @@ service cloud.firestore {
         || data.organizerUid == request.auth.uid;
     }
 
-    // Keep targetBatchNumbers' cap in sync with CURRENT_MAX_BATCH_NUMBER
-    // (see isValidBatchNumber above) and targetUids' cap with
+    // targetBatchNumbers' cap follows the number of batches that exist
+    // (currentMaxBatch above) and targetUids' cap with
     // MAX_TARGET_UIDS in src/lib/events.ts.
     //
     // targetChapterIds / targetBadgeIds / targetLabels (display names, one
@@ -873,7 +880,7 @@ service cloud.firestore {
 
     function isValidEventTargeting(data) {
       return data.targetType in ['everyone', 'batch', 'city', 'chapter', 'badge', 'selected']
-        && data.targetBatchNumbers is list && data.targetBatchNumbers.size() <= 43
+        && data.targetBatchNumbers is list && data.targetBatchNumbers.size() <= currentMaxBatch()
         && data.targetCityLower is string && data.targetCityLower.size() <= 120
         && data.targetUids is list && data.targetUids.size() <= 50
         && eventChapterIds(data) is list && eventChapterIds(data).size() <= 10
@@ -1079,7 +1086,7 @@ service cloud.firestore {
         && data.meetupEnabled is bool
         && data.jobsEnabled is bool
         && data.monthlyDay in [1, 2]
-        && data.targetBatches is list && data.targetBatches.size() <= 60
+        && data.targetBatches is list && data.targetBatches.size() <= 100
         && data.dailyLimit is int && data.dailyLimit >= 1 && data.dailyLimit <= 90
         && data.keys().hasOnly(
              ['paused', 'welcomeEnabled', 'birthdayEnabled', 'meetupEnabled', 'jobsEnabled',
@@ -1096,7 +1103,7 @@ service cloud.firestore {
     }
 
     function isValidEmailGroups(data) {
-      return data.addresses is map && data.addresses.size() <= 60
+      return data.addresses is map && data.addresses.size() <= 100
         && data.keys().hasOnly(['addresses', 'updatedAt', 'updatedByUid']);
     }
 
@@ -1127,7 +1134,7 @@ service cloud.firestore {
     // current list ("I have updated the Google Group").
     match /emailGroupReports/{batchId} {
       allow get: if callerIsSuperAdmin();
-      allow list: if callerIsSuperAdmin() && request.query.limit <= 60;
+      allow list: if callerIsSuperAdmin() && request.query.limit <= 100;
       allow update: if callerIsSuperAdmin()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['baseline', 'baselineAt'])
         && request.resource.data.baseline == resource.data.emails
@@ -1150,7 +1157,7 @@ service cloud.firestore {
              ['process_welcome', 'process_birthday', 'send_reminder', 'retry_failed', 'rebuild_indexes']
         && (!('reminderType' in request.resource.data) || request.resource.data.reminderType in ['meetup', 'jobs'])
         && (!('batches' in request.resource.data)
-            || (request.resource.data.batches is list && request.resource.data.batches.size() <= 60))
+            || (request.resource.data.batches is list && request.resource.data.batches.size() <= 100))
         && request.resource.data.keys().hasOnly(
              ['action', 'reminderType', 'batches', 'status', 'confirmed', 'requestedByUid', 'requestedAt']
            );

@@ -259,9 +259,9 @@ export async function getGroupReport(batchNumber: number): Promise<GroupReport |
   return snap.exists() ? toReport(snap.id, snap.data()) : null;
 }
 
-/** Up to ~43 reads — only when the superadmin explicitly asks for the all-batches view. */
+/** One read per batch — only when the superadmin explicitly asks for the all-batches view. */
 export async function listGroupReports(): Promise<GroupReport[]> {
-  const snap = await getDocs(query(collection(database(), 'emailGroupReports'), fsLimit(60)));
+  const snap = await getDocs(query(collection(database(), 'emailGroupReports'), fsLimit(100)));
   return snap.docs.map((d) => toReport(d.id, d.data())).sort((a, b) => a.batchNumber - b.batchNumber);
 }
 
