@@ -3,10 +3,11 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Phase 7 trusted monthly automation, run by .github/workflows/monthly-automation.yml via the Firebase Admin SDK. Deliberately a SEPARATE package from the main app (which never imports anything here) so firebase-admin — a Node-only dependency — never risks being pulled into the browser bundle.",
+  "description": "Phase 7 trusted monthly automation, run by .github/workflows/monthly-automation.yml via the Firebase Admin SDK. Deliberately a SEPARATE package from the main app (which never imports anything here) so firebase-admin \u2014 a Node-only dependency \u2014 never risks being pulled into the browser bundle.",
   "scripts": {
     "start": "tsx src/run.ts",
-    "sync-directory-index": "tsx src/directoryIndexRun.ts"
+    "sync-directory-index": "tsx src/directoryIndexRun.ts",
+    "email": "tsx src/email/run.ts"
   },
   "dependencies": {
     "firebase-admin": "^13.0.0",

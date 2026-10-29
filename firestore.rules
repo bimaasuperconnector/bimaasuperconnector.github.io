@@ -124,8 +124,7 @@ service cloud.firestore {
         && data.location is string && data.location.size() <= 120
         && data.locationLower is string && data.locationLower == data.location.lower()
         // Phase 14: controlled-reference-data-normalized twin of
-        // location (src/lib/geography.ts) — powers communication
-        // segmentation ('city' segments) and Phase 13 event
+        // location (src/lib/geography.ts) — powers Phase 13 event
         // city-targeting matching. Always computed by saveOwnProfile()
         // from `location`, never independently client-set.
         && data.cityCanonical is string && data.cityCanonical.size() <= 120
@@ -205,9 +204,7 @@ service cloud.firestore {
     // "Messcom", "Finclub", "Astronomy Club"). Small, admin-created
     // collection — bounded by how many badges an admin defines, never
     // by member count, so an unfiltered `list` here is safe at any
-    // alumni-base size (same "small, admin-managed, unfiltered list is
-    // fine" reasoning already applied to segment definitions in Phase
-    // 14's communicationSegments). Read access is any approved member
+    // alumni-base size. Read access is any approved member
     // (needed for the Profile-edit badge picker); writes are
     // super_admin-only, the same trust tier as role management, since a
     // badge is a platform-wide taxonomy decision, not a batch-scoped one.
@@ -312,7 +309,13 @@ service cloud.firestore {
       // blocks for the same path — safer to be explicit here.
       allow update: if
         (
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt'])
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt', 'approvedAt'])
+          // approvedAt (email automation: the welcome-email queue reads
+          // it) can only ever be stamped with the server time, and only
+          // by an approval; it cannot be forged or back-dated.
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['approvedAt'])
+              || (request.resource.data.status == 'approved'
+                  && request.resource.data.approvedAt == request.time))
           && request.resource.data.role == resource.data.role
           && request.resource.data.assignedBatchNumbers == resource.data.assignedBatchNumbers
           && (request.resource.data.status == 'pending'
@@ -389,8 +392,15 @@ service cloud.firestore {
         && data.visibility.whatsapp is bool
         && data.visibility.email is bool
         && data.visibility.linkedin is bool
+        // dobMD ('MM-DD') is a private index of the date of birth that
+        // lets the daily birthday job query "who has a birthday today"
+        // without reading every member. It may only ever agree with dob.
+        && (!('dobMD' in data)
+            || (data.dobMD == null && data.dob == null)
+            || (data.dobMD is string && data.dobMD.matches('^[0-9]{2}-[0-9]{2}$')
+                && data.dob is string && data.dob.matches('^[0-9]{4}-' + data.dobMD + '$')))
         && data.keys().hasOnly(
-             ['uid', 'dob', 'phoneNumber', 'whatsappNumber', 'contactEmail', 'linkedinUrl',
+             ['uid', 'dob', 'dobMD', 'phoneNumber', 'whatsappNumber', 'contactEmail', 'linkedinUrl',
               'visibility', 'createdAt', 'updatedAt']
            );
     }
@@ -1046,46 +1056,105 @@ service cloud.firestore {
       allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
     }
 
-    // Phase 14 (Autonomous communication & segmentation). Segment
-    // DEFINITIONS only — an admin-authored, named "who does this refer
-    // to" record (batch/city/openToWork/founders/a hand-picked uid
-    // list). Deliberately NOT a materialized membership list: resolving
-    // WHO is currently in a segment is done on demand, client-side,
-    // against the already-indexed fields on `users`/`profiles` (see
-    // communicationSegmentsRepository.ts) — this collection never grows
-    // with the member base, only with how many named segments admins
-    // choose to save, so it needs no pagination/limit rule at all.
-    function isValidCommunicationSegmentShape(data) {
-      return data.name is string && data.name.size() > 0 && data.name.size() <= 100
-        && data.type in ['everyone', 'batch', 'city', 'openToWork', 'founders', 'customUids']
-        && isValidBatchNumberOrNull(data.batchNumber)
-        && data.cityCanonical is string && data.cityCanonical.size() <= 120
-        && data.customUids is list && data.customUids.size() <= 50
-        && data.createdByUid is string
+    // ------------------------------------------------------------------
+    // Email Automation & Reminders (super_admin only)
+    //
+    // Everything here is readable/writable ONLY by a super_admin, and the
+    // automation job (Admin SDK, bypasses Rules) is the only writer of
+    // the queue, the status document and the membership reports. A
+    // member can never read or touch any of it.
+    // ------------------------------------------------------------------
+
+    function isValidEmailTemplate(t) {
+      return t is map
+        && t.keys().hasOnly(['subject', 'body'])
+        && t.subject is string && t.subject.size() > 0 && t.subject.size() <= 200
+        && t.body is string && t.body.size() > 0 && t.body.size() <= 10000;
+    }
+
+    function isValidEmailConfig(data) {
+      return data.paused is bool
+        && data.welcomeEnabled is bool
+        && data.birthdayEnabled is bool
+        && data.meetupEnabled is bool
+        && data.jobsEnabled is bool
+        && data.monthlyDay in [1, 2]
+        && data.targetBatches is list && data.targetBatches.size() <= 60
+        && data.dailyLimit is int && data.dailyLimit >= 1 && data.dailyLimit <= 90
         && data.keys().hasOnly(
-             ['name', 'type', 'batchNumber', 'cityCanonical', 'customUids', 'createdByUid',
-              'createdAt', 'updatedAt']
+             ['paused', 'welcomeEnabled', 'birthdayEnabled', 'meetupEnabled', 'jobsEnabled',
+              'monthlyDay', 'targetBatches', 'dailyLimit', 'updatedAt', 'updatedByUid']
            );
     }
 
-    match /communicationSegments/{segmentId} {
-      // Any admin tier may define/read/resolve/delete a segment — an
-      // organizational productivity tool, not a permission-sensitive
-      // action like role assignment, same trust level already extended
-      // to batch_admin for Reports/the audit log.
-      allow get: if callerIsAnyAdmin();
-      allow list: if callerIsAnyAdmin();
-      allow create: if callerIsAnyAdmin()
-        && request.resource.data.createdByUid == request.auth.uid
-        && isValidCommunicationSegmentShape(request.resource.data);
-      // createdByUid stays fixed to whoever originally authored the
-      // segment (not necessarily the admin editing it later) — mirrors
-      // organizerUid/postedByUid's immutable-identity-field pattern
-      // used for events/jobs elsewhere in this file.
-      allow update: if callerIsAnyAdmin()
-        && request.resource.data.createdByUid == resource.data.createdByUid
-        && isValidCommunicationSegmentShape(request.resource.data);
-      allow delete: if callerIsAnyAdmin();
+    function isValidEmailTemplates(data) {
+      return isValidEmailTemplate(data.welcome)
+        && isValidEmailTemplate(data.birthday)
+        && isValidEmailTemplate(data.meetup)
+        && isValidEmailTemplate(data.jobs)
+        && data.keys().hasOnly(['welcome', 'birthday', 'meetup', 'jobs', 'updatedAt', 'updatedByUid']);
+    }
+
+    function isValidEmailGroups(data) {
+      return data.addresses is map && data.addresses.size() <= 60
+        && data.keys().hasOnly(['addresses', 'updatedAt', 'updatedByUid']);
+    }
+
+    // emailAutomation/config | templates | groups are superadmin-edited;
+    // emailAutomation/status is written by the automation job only.
+    match /emailAutomation/{docId} {
+      allow get: if callerIsSuperAdmin();
+      allow list: if false;
+      allow create, update: if callerIsSuperAdmin()
+        && request.resource.data.updatedByUid == request.auth.uid
+        && ((docId == 'config' && isValidEmailConfig(request.resource.data))
+            || (docId == 'templates' && isValidEmailTemplates(request.resource.data))
+            || (docId == 'groups' && isValidEmailGroups(request.resource.data)));
+      allow delete: if false;
+    }
+
+    // One document per email (welcome / birthday / group reminder): the
+    // queue AND the delivery history. Read-only for the superadmin
+    // console, which always queries with a limit (50).
+    match /emailQueue/{itemId} {
+      allow get: if callerIsSuperAdmin();
+      allow list: if callerIsSuperAdmin() && request.query.limit <= 100;
+      allow write: if false;
+    }
+
+    // Per-batch Google Group membership report. The job writes `emails`;
+    // the superadmin may only move `baseline` forward to exactly the
+    // current list ("I have updated the Google Group").
+    match /emailGroupReports/{batchId} {
+      allow get: if callerIsSuperAdmin();
+      allow list: if callerIsSuperAdmin() && request.query.limit <= 60;
+      allow update: if callerIsSuperAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['baseline', 'baselineAt'])
+        && request.resource.data.baseline == resource.data.emails
+        && request.resource.data.baselineAt == request.time;
+      allow create, delete: if false;
+    }
+
+    // Manual-send requests. A superadmin can only CREATE a confirmed,
+    // 'requested' command in their own name; the job executes it (after
+    // re-checking the requester is still a superadmin) and records the
+    // outcome. Commands can never be edited or deleted from the browser.
+    match /emailCommands/{commandId} {
+      allow get: if callerIsSuperAdmin();
+      allow list: if callerIsSuperAdmin() && request.query.limit <= 30;
+      allow create: if callerIsSuperAdmin()
+        && request.resource.data.status == 'requested'
+        && request.resource.data.confirmed == true
+        && request.resource.data.requestedByUid == request.auth.uid
+        && request.resource.data.action in
+             ['process_welcome', 'process_birthday', 'send_reminder', 'retry_failed', 'rebuild_indexes']
+        && (!('reminderType' in request.resource.data) || request.resource.data.reminderType in ['meetup', 'jobs'])
+        && (!('batches' in request.resource.data)
+            || (request.resource.data.batches is list && request.resource.data.batches.size() <= 60))
+        && request.resource.data.keys().hasOnly(
+             ['action', 'reminderType', 'batches', 'status', 'confirmed', 'requestedByUid', 'requestedAt']
+           );
+      allow update, delete: if false;
     }
 
     // Everything else stays deny-by-default until a later phase defines

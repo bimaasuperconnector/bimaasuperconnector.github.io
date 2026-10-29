@@ -15,7 +15,7 @@ import { EMPLOYMENT_TYPE_LABELS, type Job, getJob, setJobStatus } from '../../..
 import { type AdminMetrics, loadAdminMetrics } from '../../../firebase/repositories/adminMetricsRepository';
 import { type Report, queryOpenReports, setReportStatus } from '../../../firebase/repositories/reportsRepository';
 import { type AuditLogEntry, queryRecentAuditLogs } from '../../../firebase/repositories/auditLogsRepository';
-import { CommunicationSegments } from '../../../components/admin/CommunicationSegments';
+import { EmailConsole } from '../../../components/admin/email/EmailConsole';
 import { Avatar } from '../../../components/ui/Avatar';
 import { ProfileView } from '../../../components/profile/ProfileView';
 import { type Profile, getPendingProfile } from '../../../firebase/repositories/profilesRepository';
@@ -483,7 +483,7 @@ function PendingApplicantProfile({ uid }: { uid: string }) {
   );
 }
 
-export function AdminIndexPage() {
+function PendingApprovals() {
   const { record } = useUserRecord();
   const isSuperAdmin = record?.role === 'super_admin';
   const [pending, setPending] = useState<UserRecord[]>([]);
@@ -524,116 +524,159 @@ export function AdminIndexPage() {
     }
   }
 
-  const sections: [string, string][] = [
-    ['dashboard', 'Dashboard'],
-    ['reports', 'Reports'],
-    ...(isSuperAdmin ? ([['roles', 'Roles'], ['chapters', 'Chapters'], ['badges', 'Badges']] as [string, string][]) : []),
-    ['segments', 'Segments'],
-    ['automation', 'Automation'],
-    ['approvals', 'Approvals'],
-  ];
+  return (
+    <AdminSection
+      id="approvals"
+      title="Pending approvals"
+    >
+      <p className="copy">
+        {isSuperAdmin
+          ? 'Every pending sign-in across all batches.'
+          : `Pending sign-ins for ${(() => {
+              const list = effectiveAdminBatches(record) ?? [];
+              return list.length === 0
+                ? 'your batch'
+                : list.map((n) => findBatch(n)?.label ?? `BIM${n}`).join(', ');
+            })()} — your own batch is included automatically.`}
+      </p>
+
+      {!isSuperAdmin && (effectiveAdminBatches(record) ?? []).length === 0 && (
+        <div className="mt-md">
+          <ErrorNote>
+            Your account has no batch recorded (it was created before batch selection existed), so no applications
+            can appear here. Ask a super admin to add your batch under Roles.
+          </ErrorNote>
+        </div>
+      )}
+
+      {error && (
+        <div className="mt-md">
+          <ErrorNote>{error}</ErrorNote>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="mt-lg">
+          <SkeletonList count={2} heightClass="h-20" />
+        </div>
+      ) : pending.length === 0 ? (
+        <div className="mt-lg">
+          <EmptyState title="No pending accounts right now" />
+        </div>
+      ) : (
+        <ul className="mt-lg space-y-md">
+          {pending.map((person) => {
+            const batch = person.batchNumber !== null ? findBatch(person.batchNumber) : undefined;
+            return (
+              <li key={person.uid} className="rounded-lg bg-surface-soft p-md">
+                <div className="flex flex-wrap items-center justify-between gap-md">
+                  <div className="flex items-center gap-sm">
+                    <Avatar sizeClass="h-10 w-10" />
+                    <div>
+                      <p className="text-label-md text-ink">{person.displayName || 'Unnamed account'}</p>
+                      <p className="text-body-md text-muted">
+                        {person.email} {batch ? `· ${batch.label}` : ''}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex gap-sm">
+                    <Button
+                      variant="secondary"
+                      className="px-md py-xs"
+                      disabled={actioningUid === person.uid}
+                      onClick={() => void handleDecision(person.uid, 'rejected')}
+                    >
+                      Reject
+                    </Button>
+                    <Button
+                      variant="primary"
+                      className="px-md py-xs"
+                      disabled={actioningUid === person.uid}
+                      onClick={() => void handleDecision(person.uid, 'approved')}
+                    >
+                      Approve
+                    </Button>
+                  </div>
+                </div>
+                {person.note && <p className="mt-sm rounded-md bg-canvas p-sm text-body-md text-body">"{person.note}"</p>}
+                <PendingApplicantProfile uid={person.uid} />
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </AdminSection>
+  );
+}
+
+type AdminTabId = 'overview' | 'approvals' | 'moderation' | 'people' | 'catalog' | 'email' | 'automation';
+
+const ADMIN_TABS: { id: AdminTabId; label: string; superOnly?: boolean }[] = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'approvals', label: 'Approvals' },
+  { id: 'moderation', label: 'Moderation' },
+  { id: 'people', label: 'People & roles', superOnly: true },
+  { id: 'catalog', label: 'Chapters & badges', superOnly: true },
+  { id: 'email', label: 'Email & reminders', superOnly: true },
+  { id: 'automation', label: 'Automation log' },
+];
+
+function tabFromHash(allowed: AdminTabId[]): AdminTabId {
+  const h = window.location.hash.replace('#', '');
+  return (allowed as string[]).includes(h) ? (h as AdminTabId) : 'overview';
+}
+
+/**
+ * One section at a time: a section's data is fetched only while its tab is
+ * open, so opening the console no longer loads every panel at once (fewer
+ * Firestore reads). The active tab is kept in the URL hash (#email, …) so
+ * a refresh or a shared link lands on the same tab.
+ */
+export function AdminIndexPage() {
+  const { record } = useUserRecord();
+  const isSuperAdmin = record?.role === 'super_admin';
+  const tabs = ADMIN_TABS.filter((t) => !t.superOnly || isSuperAdmin);
+  const allowed = tabs.map((t) => t.id);
+  const [tab, setTab] = useState<AdminTabId>(() => tabFromHash(allowed));
+
+  useEffect(() => {
+    const onHash = () => setTab(tabFromHash(allowed));
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSuperAdmin]);
+
+  function select(id: AdminTabId) {
+    setTab(id);
+    window.history.replaceState(null, '', `#${id}`);
+  }
+
+  const active = allowed.includes(tab) ? tab : 'overview';
 
   return (
     <div className="space-y-lg">
-      <PageHeader title="Admin console" description="Moderation, roles, communication and automation for BIM AA." />
+      <PageHeader title="Admin console" description="Approvals, moderation, roles, email and automation for BIM AA." />
 
-      <nav aria-label="Admin sections" className="-mx-md flex gap-xs overflow-x-auto px-md pb-xxs no-scrollbar md:mx-0 md:px-0">
-        {sections.map(([id, label]) => (
-          <a key={id} href={`#${id}`} className="tab-chip shrink-0 !border-hairline">
-            {label}
-          </a>
+      <div role="tablist" aria-label="Admin sections" className="-mx-md flex gap-xs overflow-x-auto px-md pb-xxs no-scrollbar md:mx-0 md:px-0">
+        {tabs.map((t) => (
+          <button key={t.id} role="tab" aria-selected={active === t.id} className="tab-chip shrink-0" onClick={() => select(t.id)}>
+            {t.label}
+          </button>
         ))}
-      </nav>
+      </div>
 
-      <MetricsDashboard />
-      <ReportsQueue />
-      {isSuperAdmin && <RoleManagement />}
-      {isSuperAdmin && <ChaptersManagement />}
-      {isSuperAdmin && <BadgesManagement />}
-      <CommunicationSegments />
-      <AuditLogViewer />
-
-      <AdminSection
-        id="approvals"
-        title="Pending approvals"
-      >
-        <p className="copy">
-          {isSuperAdmin
-            ? 'Every pending sign-in across all batches.'
-            : `Pending sign-ins for ${(() => {
-                const list = effectiveAdminBatches(record) ?? [];
-                return list.length === 0
-                  ? 'your batch'
-                  : list.map((n) => findBatch(n)?.label ?? `BIM${n}`).join(', ');
-              })()} — your own batch is included automatically.`}
-        </p>
-
-        {!isSuperAdmin && (effectiveAdminBatches(record) ?? []).length === 0 && (
-          <div className="mt-md">
-            <ErrorNote>
-              Your account has no batch recorded (it was created before batch selection existed), so no applications
-              can appear here. Ask a super admin to add your batch under Roles.
-            </ErrorNote>
-          </div>
-        )}
-
-        {error && (
-          <div className="mt-md">
-            <ErrorNote>{error}</ErrorNote>
-          </div>
-        )}
-
-        {loading ? (
-          <div className="mt-lg">
-            <SkeletonList count={2} heightClass="h-20" />
-          </div>
-        ) : pending.length === 0 ? (
-          <div className="mt-lg">
-            <EmptyState title="No pending accounts right now" />
-          </div>
-        ) : (
-          <ul className="mt-lg space-y-md">
-            {pending.map((person) => {
-              const batch = person.batchNumber !== null ? findBatch(person.batchNumber) : undefined;
-              return (
-                <li key={person.uid} className="rounded-lg bg-surface-soft p-md">
-                  <div className="flex flex-wrap items-center justify-between gap-md">
-                    <div className="flex items-center gap-sm">
-                      <Avatar sizeClass="h-10 w-10" />
-                      <div>
-                        <p className="text-label-md text-ink">{person.displayName || 'Unnamed account'}</p>
-                        <p className="text-body-md text-muted">
-                          {person.email} {batch ? `· ${batch.label}` : ''}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex gap-sm">
-                      <Button
-                        variant="secondary"
-                        className="px-md py-xs"
-                        disabled={actioningUid === person.uid}
-                        onClick={() => void handleDecision(person.uid, 'rejected')}
-                      >
-                        Reject
-                      </Button>
-                      <Button
-                        variant="primary"
-                        className="px-md py-xs"
-                        disabled={actioningUid === person.uid}
-                        onClick={() => void handleDecision(person.uid, 'approved')}
-                      >
-                        Approve
-                      </Button>
-                    </div>
-                  </div>
-                  {person.note && <p className="mt-sm rounded-md bg-canvas p-sm text-body-md text-body">"{person.note}"</p>}
-                  <PendingApplicantProfile uid={person.uid} />
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </AdminSection>
+      {active === 'overview' && <MetricsDashboard />}
+      {active === 'approvals' && <PendingApprovals />}
+      {active === 'moderation' && <ReportsQueue />}
+      {active === 'people' && isSuperAdmin && <RoleManagement />}
+      {active === 'catalog' && isSuperAdmin && (
+        <>
+          <ChaptersManagement />
+          <BadgesManagement />
+        </>
+      )}
+      {active === 'email' && isSuperAdmin && <EmailConsole />}
+      {active === 'automation' && <AuditLogViewer />}
     </div>
   );
 }

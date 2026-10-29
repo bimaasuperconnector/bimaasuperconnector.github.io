@@ -245,8 +245,7 @@ export interface Profile extends ProfileFormFields {
    * Phase 14 addition: `location` normalized against a controlled
    * reference table (src/lib/geography.ts) so "Bangalore" and
    * "Bengaluru" collapse to one canonical value — used for
-   * communication-segment resolution (city segments) and for matching
-   * Phase 13 event city-targeting against a viewer's profile, without
+   * matching Phase 13 event city-targeting against a viewer's profile, without
    * changing the existing free-text `location`/`locationLower` fields
    * Directory's location-prefix search already relies on. See
    * FEATURE_SUPERCONNECTOR.md's Phase 14 entry for the full rationale.

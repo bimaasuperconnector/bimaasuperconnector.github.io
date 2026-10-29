@@ -12,11 +12,13 @@ import { db } from './firebaseAdmin';
  * taken over — otherwise a single crashed run would permanently wedge
  * all future automation.
  */
-const LOCK_DOC_PATH = ['systemConfig', 'automationLock'] as const;
+const LOCK_COLLECTION = 'systemConfig';
+const DEFAULT_LOCK_ID = 'automationLock';
 const STALE_AFTER_MS = 20 * 60 * 1000; // 20 minutes — generous for how long one run should ever take
 
-export async function acquireLock(runId: string): Promise<boolean> {
-  const ref = db.collection(LOCK_DOC_PATH[0]).doc(LOCK_DOC_PATH[1]);
+/** `lockId` lets independent jobs (e.g. the email job) hold their own lock without blocking each other. */
+export async function acquireLock(runId: string, lockId: string = DEFAULT_LOCK_ID): Promise<boolean> {
+  const ref = db.collection(LOCK_COLLECTION).doc(lockId);
 
   return db.runTransaction(async (tx) => {
     const snapshot = await tx.get(ref);
@@ -33,7 +35,7 @@ export async function acquireLock(runId: string): Promise<boolean> {
   });
 }
 
-export async function releaseLock(): Promise<void> {
-  const ref = db.collection(LOCK_DOC_PATH[0]).doc(LOCK_DOC_PATH[1]);
+export async function releaseLock(lockId: string = DEFAULT_LOCK_ID): Promise<void> {
+  const ref = db.collection(LOCK_COLLECTION).doc(lockId);
   await ref.set({ locked: false, lockedAt: Timestamp.now() }, { merge: true });
 }

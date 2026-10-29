@@ -7,6 +7,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../init';
 import type { ContactVisibleMap } from './profilesRepository';
+import { dobToMonthDay } from '../../lib/emailConfig';
 
 /**
  * Private contact channels + date of birth. See firestore.rules'
@@ -46,6 +47,7 @@ export function emptyProfileContact(): ProfileContact {
 const ALLOWED_FIELDS = [
   'uid',
   'dob',
+  'dobMD',
   'phoneNumber',
   'whatsappNumber',
   'contactEmail',
@@ -116,6 +118,9 @@ export async function saveOwnProfileContact(
   const payload: Record<string, unknown> = {
     uid,
     ...contact,
+    // Private 'MM-DD' index of the date of birth, so the daily birthday
+    // job can query today's birthdays without reading every member.
+    dobMD: dobToMonthDay(contact.dob),
     updatedAt: serverTimestamp(),
   };
 

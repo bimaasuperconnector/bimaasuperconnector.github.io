@@ -141,12 +141,15 @@ export function subscribeToUserRecord(
  * - a super_admin can do this for anyone,
  * - a batch_admin can only do this for a pending user whose batchNumber
  *   is in the batch_admin's own assignedBatchNumbers,
- * - the write can only touch status/updatedAt (can't also grant a role).
+ * - the write can only touch status/updatedAt/approvedAt (can't also grant a role).
  */
 export async function setUserStatus(uid: string, status: AccountStatus): Promise<void> {
   await updateDoc(userDocRef(uid), {
     status,
     updatedAt: serverTimestamp(),
+    // Stamped only on approval: the daily email job reads it to queue the
+    // welcome email (Rules allow it to be the server time and nothing else).
+    ...(status === 'approved' ? { approvedAt: serverTimestamp() } : {}),
   });
 }
 

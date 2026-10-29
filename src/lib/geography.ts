@@ -18,7 +18,7 @@
  * mismatches. A city typed that ISN'T in this table is never rejected —
  * it is still canonicalized (trimmed, whitespace-collapsed, consistently
  * cased) so at least "chennai" / "Chennai " / "CHENNAI" collapse to one
- * segment/targeting key, even though it won't catch a synonym this table
+ * city-targeting key, even though it won't catch a synonym this table
  * doesn't yet know about. Extending CITY_ALIASES is a one-line,
  * non-breaking change — existing canonical spellings for already-known
  * cities are untouched, and it never requires a schema migration.

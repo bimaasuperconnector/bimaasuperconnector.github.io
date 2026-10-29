@@ -1,0 +1,50 @@
+name: Email Automation
+
+on:
+  schedule:
+    # Once a day at 03:30 UTC = 09:00 IST. GitHub's cron is not an exact
+    # scheduler (runs can start late), so the job works out what is due
+    # from Firestore rather than trusting this fired at a precise minute.
+    # Keep in sync with SCHEDULE_UTC_HOUR/MINUTE in src/lib/emailConfig.ts.
+    - cron: '30 3 * * *'
+  # "Run workflow" button on the Actions tab: runs the same idempotent job
+  # immediately (e.g. to execute a manual request from the Email console).
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+# Never two email runs at once (the job also holds a Firestore lock).
+concurrency:
+  group: email-automation
+  cancel-in-progress: false
+
+jobs:
+  send-emails:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: automation/package-lock.json
+
+      - name: Install automation dependencies
+        working-directory: automation
+        run: npm ci
+
+      - name: Run email automation
+        working-directory: automation
+        env:
+          # REAL secrets (Settings -> Secrets and variables -> Actions -> Secrets).
+          GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
+          GOOGLE_CALENDAR_CLIENT_ID: ${{ secrets.GOOGLE_CALENDAR_CLIENT_ID }}
+          GOOGLE_CALENDAR_CLIENT_SECRET: ${{ secrets.GOOGLE_CALENDAR_CLIENT_SECRET }}
+          # New: refresh token with the gmail.send scope only.
+          GMAIL_REFRESH_TOKEN: ${{ secrets.GMAIL_REFRESH_TOKEN }}
+        run: npm run email
