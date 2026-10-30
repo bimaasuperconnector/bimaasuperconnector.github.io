@@ -1,4 +1,4 @@
-import { Timestamp } from 'firebase-admin/firestore';
+import { Timestamp, type QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import { db } from './firebaseAdmin';
 import { getCalendarClient } from './googleCalendar';
 import { logJobRun } from './auditLog';
@@ -45,8 +45,29 @@ export async function runCalendarJob(): Promise<void> {
     return;
   }
 
-  const matchesSnapshot = await db.collection('matches').get();
-  const pending = matchesSnapshot.docs.filter((d) => !d.data().calendarEventId);
+  // QUOTA: this job runs daily. It used to read EVERY match ever created
+  // (thousands per month at 10,000 members), which would breach the free
+  // daily read quota within the first year. Now it reads only the matches
+  // of cycles that can still need invitations (matches exist, cycle not yet
+  // flagged `calendarComplete`), and flags a cycle once every one of its
+  // matches has an event, so later daily runs cost one tiny cycle read.
+  const cycleDocs = await db
+    .collection('connectionCycles')
+    .where('status', 'in', ['matching_complete', 'feedback_open'])
+    .get();
+  const openCycleIds = cycleDocs.docs.filter((d) => d.data().calendarComplete !== true).map((d) => d.id);
+  if (openCycleIds.length === 0) return;
+
+  const pending: QueryDocumentSnapshot[] = [];
+  for (const cycleId of openCycleIds) {
+    const snap = await db.collection('matches').where('cycleId', '==', cycleId).get();
+    const missing = snap.docs.filter((d) => !d.data().calendarEventId);
+    if (missing.length === 0) {
+      await db.collection('connectionCycles').doc(cycleId).set({ calendarComplete: true }, { merge: true });
+    } else {
+      pending.push(...missing);
+    }
+  }
   if (pending.length === 0) return;
 
   const cycleCache = new Map<string, Cycle>();

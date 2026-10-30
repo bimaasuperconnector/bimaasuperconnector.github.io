@@ -39,11 +39,13 @@ export function PrivacyPage() {
           and past organisations (including whether you founded them), education, skills, interests,
           networking goals, links, badges, chapters, and whether you are open to work with the roles and note you
           provide. Your city is also matched to a standard spelling (for example Bangalore and Bengaluru
-          are treated as the same city).
+          are treated as the same city). While your application is pending, what you type is kept in a
+          private copy that only you and your approvers can read.
         </p>
         <p>
           <strong>Optional private details.</strong> Date of birth, phone number, WhatsApp number, a
-          personal contact email and a LinkedIn link. All are optional.
+          personal contact email and a LinkedIn link. All are optional. For birthday greetings we also
+          keep the month and day of your birth as a separate private field.
         </p>
         <p>
           <strong>SuperConnector activity.</strong> Your monthly registrations (format and day preference),
@@ -55,9 +57,14 @@ export function PrivacyPage() {
           in-app notifications sent to you.
         </p>
         <p>
+          <strong>Email records.</strong> When we email you (see section 3) we keep a record that the email
+          was queued, sent or failed, with the date, so that no one is emailed twice and failures can be
+          retried. We do not track whether you opened an email or clicked a link.
+        </p>
+        <p>
           <strong>Technical data.</strong> Like any website, the hosting and security providers below
-          receive your IP address, browser type and request details when you load the site or upload a
-          photo. We do not run analytics or advertising trackers.
+          receive your IP address, browser type and request details when you load the site, sign in or
+          upload a photo. We do not run analytics or advertising trackers.
         </p>
       </Section>
 
@@ -65,12 +72,14 @@ export function PrivacyPage() {
         <Bullets
           items={[
             'to confirm that you are an alumnus or alumna and approve access;',
-            'to run the member directory, jobs board, events, entrepreneurship and open-to-work features;',
+            'to run the member directory (including fast name search), jobs board, events, entrepreneurship and open-to-work features;',
             'to match you with other members each month, create the calendar invitation and Meet link, and send in-app notifications;',
             'to improve matching using your feedback and past matches, so you are not paired repeatedly with the same people;',
+            'to email you a one-time welcome message when your account is approved;',
+            'to send a monthly reminder about the SuperConnector meetup and job openings to your batch\'s Google Group;',
             'to moderate content, handle reports and keep the service secure;',
             'to show visitors a few aggregate numbers on the public home page (such as total members), which contain no personal data;',
-            'if you provide your date of birth, to send you a birthday greeting. This is the only purpose for it.',
+            'if you provide your date of birth, to send you a birthday greeting by email. This is the only purpose for it.',
           ]}
         />
         <p>
@@ -87,13 +96,21 @@ export function PrivacyPage() {
       <Section title="4. Who can see what">
         <p>
           <strong>The public</strong> can see the home page, these legal pages and aggregate counts only.
-          Signed-out visitors cannot read any member data.
+          Signed-out visitors cannot read any member data. The one exception is a profile photo: its web
+          address is public (see section 5), so anyone who has the exact link can view that image.
         </p>
         <p>
           <strong>Approved members</strong> can see your directory profile: name, photo, batch, headline,
           bio, city, organisations, education, skills, interests, networking goals, badges, chapters, open-to-work
           details and links you added. They can also see jobs and events you post. They cannot see the
           email address you signed in with.
+        </p>
+        <p>
+          <strong>Name search.</strong> To keep search fast, approved members' browsers download a compact
+          list containing only each member's name, batch, role line, photo link and a few labels, and
+          search it on the device. The list is refreshed automatically about every hour and is readable
+          only by approved members. A copy is kept in your browser's local storage and is removed when
+          you sign out.
         </p>
         <p>
           <strong>Contact channels are private by default.</strong> Your phone, WhatsApp, contact email and
@@ -104,21 +121,30 @@ export function PrivacyPage() {
         </p>
         <p>
           <strong>Your date of birth</strong> is never shown to other members and no administrator screen
-          displays it.
+          displays it. Only the automated birthday job reads it (the month and day), to find whose birthday
+          it is.
         </p>
         <p>
-          <strong>Your pair or circle.</strong> Matched members are invited on one Google Calendar event, and
-          Google's invitation can show the invited email addresses to everyone on it. Likewise, an event
-          organiser can see who RSVPed, and attendees may appear on the organiser's Calendar event.
+          <strong>Your pair, circle or event.</strong> Matched members are invited on one Google Calendar
+          event, and Google's invitation can show the invited email addresses to everyone on it. The same
+          applies to alumni events: the organiser and everyone who RSVPs "attending" is invited to the
+          event, created from the {LEGAL.serviceName} Google account, and can see the other invitees' email
+          addresses on the invitation. An event organiser can also see who has RSVPed.
         </p>
         <p>
-          <strong>Administrators</strong> (the super administrators and the batch representatives for your
-          batch) can see your sign-in email, name, batch and application note, your pending profile,
-          reports, and the feedback and Connection Meter data needed to run the service. They can also
-          export a list of names and emails to contact a group of members for network announcements.
-          Batch representatives approve only members of their own batches. Your feedback about someone
-          is never shown to that person, and the Connection Meter is never shown to members, including
-          you.
+          <strong>Batch Google Groups.</strong> Monthly reminders are sent to a Google Group for each
+          batch. Group membership is maintained by an administrator using the list of approved members'
+          emails for that batch. Whether group members can see each other's addresses depends on the
+          group's Google settings.
+        </p>
+        <p>
+          <strong>Administrators.</strong> Super administrators can see your sign-in email, name, batch and
+          application note, your pending profile, reports, the feedback and Connection Meter data needed to
+          run the service, the lists of member emails used to maintain batch Google Groups, and the records
+          of emails sent. Batch representatives can see applications and approve members of their own
+          batches, and can correct profile details of members in those batches. Your feedback about
+          someone is never shown to that person, and the Connection Meter is never shown to members,
+          including you.
         </p>
         <p>
           The people who operate the underlying database can technically access any stored data, as with
@@ -134,18 +160,27 @@ export function PrivacyPage() {
               database that holds all member data.
             </>,
             <>
-              <strong>Google Calendar and Meet</strong>: meeting invitations sent from the {LEGAL.serviceName}{' '}
-              Google account to attendees' email addresses.
+              <strong>Google Calendar and Meet</strong>: meeting and event invitations sent from the{' '}
+              {LEGAL.serviceName} Google account to attendees' email addresses.
             </>,
             <>
-              <strong>GitHub</strong>: hosts the website and runs our scheduled monthly automation
-              (matching, calendar creation, cleanup).
+              <strong>Gmail and Google Groups</strong>: welcome and birthday emails are sent through the
+              Gmail service from the {LEGAL.serviceName} account ({LEGAL.contactEmail}); monthly reminders go
+              to batch Google Groups.
+            </>,
+            <>
+              <strong>GitHub</strong>: hosts the website (GitHub Pages) and runs our scheduled automation
+              (GitHub Actions: monthly matching, calendar creation, emails, search-list refresh and
+              clean-up). Access credentials for the automation are stored as encrypted GitHub secrets.
             </>,
             <>
               <strong>ImageKit</strong>: stores and serves profile photos. A photo's web address is
-              public: anyone who has the link can view the image, even without signing in. Photos
-              are uploaded through a <strong>Cloudflare</strong> service that verifies your sign-in
-              before passing the file on.
+              public: anyone who has the link can view the image, even without signing in.
+            </>,
+            <>
+              <strong>Cloudflare Workers</strong>: photo uploads pass through a small Cloudflare service
+              that checks your sign-in and approval status, validates the file and forwards it to ImageKit.
+              It does not store your photo or your personal data.
             </>,
           ]}
         />
@@ -162,6 +197,7 @@ export function PrivacyPage() {
             'Account details (name, email, batch): while your account is active and, where needed, for a short period afterwards to prevent abuse or handle disputes.',
             'Job posts: shown until their expiry date, then archived and no longer visible to members.',
             'Matches, feedback, reports and automation logs: kept for service integrity, fairness of matching and moderation. When we remove an account we delete or de-identify these records where practical.',
+            'Email delivery records: kept for as long as needed to avoid duplicate sends and to investigate delivery problems.',
             'Notifications: kept in your in-app inbox until cleared in a future clean-up.',
           ]}
         />
@@ -173,10 +209,11 @@ export function PrivacyPage() {
       <Section title="7. Security">
         <p>
           Access requires Google sign-in and admin approval. Database rules restrict each record to the
-          people entitled to it, protected fields such as roles and the Connection Meter cannot be edited
-          from the browser, and photo uploads are checked for sign-in, file type and size on the server
-          side. No system is perfectly secure. If we become aware of a breach affecting your data we will
-          act promptly and notify you where the law requires.
+          people entitled to it, protected fields such as roles, approval status and the Connection Meter
+          cannot be edited from the browser, and photo uploads are checked for sign-in, approval, file type
+          and size on the server side. Automation credentials are never placed in the website's code. No
+          system is perfectly secure. If we become aware of a breach affecting your data we will act
+          promptly and notify you where the law requires.
         </p>
       </Section>
 
@@ -184,7 +221,8 @@ export function PrivacyPage() {
         <Bullets
           items={[
             'View and edit your profile, contact details and photo at any time from the Profile page.',
-            'Turn off Open to Work, hide any contact channel, or remove your date of birth whenever you like.',
+            'Turn off Open to Work, hide any contact channel, or remove your date of birth whenever you like. Removing your date of birth stops birthday greetings.',
+            'Ask us to stop sending you emails or to remove you from your batch Google Group by writing to us. Account-related messages you need to use the service (such as a calendar invitation for a meeting you registered for) may still be sent.',
             'Ask for a copy of your data, a correction, or the removal of your account by emailing us.',
             'Withdraw consent. Removing your account ends your access and your directory listing.',
           ]}
@@ -200,9 +238,11 @@ export function PrivacyPage() {
       <Section title="9. Cookies, local storage and notifications">
         <p>
           We do not use advertising or tracking cookies. Your browser stores your sign-in session (set by
-          Firebase) and small items in local storage: a short-lived copy of the public home-page counts
-          and the time you last viewed notifications and jobs. The installed web app uses a service worker
-          that saves the app's own files (not your private data) so it loads faster and works offline.
+          Firebase) and small items in local storage and session storage: a short-lived copy of the public
+          home-page counts, the downloaded member-name search list, the time you last viewed notifications
+          and jobs, and a short-lived record of your event passes. The installed web app uses a service
+          worker that saves the app's own files (not your private data) so it loads faster and works
+          offline.
         </p>
         <p>
           If you tap "Enable notifications", your browser asks for permission. Alerts are shown by your

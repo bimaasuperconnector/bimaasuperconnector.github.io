@@ -85,14 +85,23 @@ export function AppGuideDialog({
         className="sheet-enter relative flex h-[100dvh] w-full flex-col bg-canvas md:h-auto md:max-h-[90vh] md:max-w-3xl md:rounded-lg md:shadow-[0_24px_64px_rgba(24,29,38,0.28)]"
       >
         <header className="flex items-start justify-between gap-sm border-b border-hairline px-md py-md md:px-lg">
-          <div>
-            <h2 id="app-guide-title" className="font-haas-disp text-title-lg text-ink">
-              Get the SuperConnector app
-            </h2>
-            <p className="mt-xxs text-body-md text-muted">
-              Add it to your device like any other app, then switch on notifications. You’re on{' '}
-              <span className="font-medium text-ink">{detectedLabel}</span>.
-            </p>
+          <div className="flex min-w-0 items-start gap-sm">
+            <img
+              src="/assets/branding/logo-192.png"
+              alt=""
+              width={44}
+              height={44}
+              className="h-11 w-11 shrink-0 rounded-[10px] ring-1 ring-hairline"
+            />
+            <div className="min-w-0">
+              <h2 id="app-guide-title" className="font-haas-disp text-title-lg text-ink">
+                Get the SuperConnector app
+              </h2>
+              <p className="mt-xxs text-body-md text-muted">
+                Add it to your device like any other app, then switch on notifications. You’re on{' '}
+                <span className="font-medium text-ink">{detectedLabel}</span>.
+              </p>
+            </div>
           </div>
           <button ref={closeRef} type="button" onClick={onClose} aria-label="Close guide" className="icon-btn -mr-xs">
             <CloseIcon />

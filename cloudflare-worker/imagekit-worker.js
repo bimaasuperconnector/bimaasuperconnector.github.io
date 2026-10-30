@@ -25,7 +25,7 @@
  * CONFIGURATION (Worker -> Settings -> Variables and Secrets)
  *   FIREBASE_PROJECT_ID   Text      e.g. bim-superconnector
  *   ALLOWED_ORIGINS       Text      comma-separated, e.g.
- *                                   https://bimsuperconnector.github.io
+ *                                   https://bimalumni.in,https://bimaasuperconnector.github.io
  *   IMAGEKIT_PRIVATE_KEY  SECRET    your ImageKit private key
  *
  * The ImageKit private key exists ONLY as a Cloudflare Worker secret.

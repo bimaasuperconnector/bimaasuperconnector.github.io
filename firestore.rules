@@ -125,7 +125,16 @@ service cloud.firestore {
       // back to a placeholder string.
       return data.displayName is string && data.displayName.size() > 0 && data.displayName.size() <= 200
         && data.displayNameLower is string && data.displayNameLower == data.displayName.lower()
-        && (data.photoURL == null || data.photoURL is string)
+        // 2026-10-30 audit: a photo URL may only point at OUR ImageKit
+        // account (the Cloudflare Worker is the only thing that puts files
+        // there). Without this a member could save any third-party URL,
+        // which every other member's browser would then load (IP/tracking
+        // leak). Deliberately the account prefix only, not the per-member
+        // folder, so any older photo URL still saves. Mirrors the ImageKit
+        // endpoint in src/lib/directoryIndexFormat.ts.
+        && (data.photoURL == null
+            || (data.photoURL is string && data.photoURL.size() <= 300
+                && data.photoURL.matches('^https://ik\\.imagekit\\.io/bimaasuperconnector/[^ ]+$')))
         && data.headline is string && data.headline.size() <= 120
         && data.bio is string && data.bio.size() <= 1000
         && data.location is string && data.location.size() <= 120
@@ -295,6 +304,13 @@ service cloud.firestore {
       // is client-choosable no matter what the client sends.
       allow create: if isSelf(uid)
         && request.resource.data.uid == uid
+        // 2026-10-30 audit: the stored email is what the welcome-email
+        // and Calendar-invite automation sends to, so it must be the
+        // verified Google email of the signed-in account, never a
+        // client-chosen address.
+        && request.auth.token.email is string
+        && request.resource.data.email is string
+        && request.resource.data.email.lower() == request.auth.token.email.lower()
         && request.resource.data.status == 'pending'
         && request.resource.data.role == 'alumni'
         && request.resource.data.assignedBatchNumbers == []
@@ -357,7 +373,12 @@ service cloud.firestore {
         && request.resource.data.uid == uid
         && isValidProfileShape(request.resource.data);
 
-      allow update: if ((isSelf(uid) && callerIsApproved()) || callerIsAnyAdmin())
+      // 2026-10-30 audit: a batch_admin may only edit profiles in a batch
+      // they cover (their own + assigned); previously ANY admin tier could
+      // rewrite ANY member's profile. super_admin remains unrestricted.
+      allow update: if ((isSelf(uid) && callerIsApproved())
+            || callerIsSuperAdmin()
+            || (callerIsBatchAdmin() && callerCoversBatch(resource.data.batchNumber)))
         && request.resource.data.uid == uid
         && isValidProfileShape(request.resource.data);
 

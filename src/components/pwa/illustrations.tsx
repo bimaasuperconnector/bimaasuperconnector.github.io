@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useId, type ReactNode } from 'react';
 
 /**
  * Stylised, device-specific illustrations for the "Get the app" guide.
@@ -99,13 +99,33 @@ function Tag({ x, y, text }: { x: number; y: number; text: string }) {
   );
 }
 
+/**
+ * The real site logo (public/assets/branding/logo-192.png, already
+ * precached by the service worker) clipped to the rounded-square shape
+ * an app icon takes on a phone/desktop. Replaces the old "SC" stand-in.
+ */
+const LOGO_SRC = '/assets/branding/logo-192.png';
+
 function Logo({ x, y, s = 28 }: { x: number; y: number; s?: number }) {
+  // useId() contains colons, which are not safe inside url(#...).
+  const clipId = `logo-clip-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
   return (
     <g>
-      <rect x={x} y={y} width={s} height={s} rx={s * 0.23} fill={C.ink} />
-      <T x={x + s / 2} y={y + s * 0.64} size={s * 0.4} fill={C.white} weight={600} anchor="middle">
-        SC
-      </T>
+      <defs>
+        <clipPath id={clipId}>
+          <rect x={x} y={y} width={s} height={s} rx={s * 0.23} />
+        </clipPath>
+      </defs>
+      <image
+        href={LOGO_SRC}
+        x={x}
+        y={y}
+        width={s}
+        height={s}
+        preserveAspectRatio="xMidYMid slice"
+        clipPath={`url(#${clipId})`}
+      />
+      <rect x={x} y={y} width={s} height={s} rx={s * 0.23} fill="none" stroke={C.ink} strokeOpacity={0.12} strokeWidth={0.5} />
     </g>
   );
 }

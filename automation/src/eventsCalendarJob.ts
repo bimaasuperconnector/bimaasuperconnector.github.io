@@ -237,7 +237,14 @@ export async function runEventsCalendarJob(): Promise<void> {
   }
 
   // --- Pass 2: cancelled events with a live Calendar entry ---
-  const cancelledEvents = await db.collection('events').where('status', '==', 'cancelled').get();
+  // QUOTA: bounded to events that have not already started (same status +
+  // startTime query shape as pass 1, so no new index). It previously read
+  // every cancelled event ever, on every daily run.
+  const cancelledEvents = await db
+    .collection('events')
+    .where('status', '==', 'cancelled')
+    .where('startTime', '>=', lowerBound)
+    .get();
   for (const eventDoc of cancelledEvents.docs) {
     const event = eventDoc.data();
     if (!event.calendarEventId || event.calendarCancelSynced === true) continue;

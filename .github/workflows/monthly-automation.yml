@@ -16,6 +16,7 @@ permissions:
 jobs:
   run-automation:
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v6

@@ -12,7 +12,7 @@ export const LEGAL = {
   contactEmail: 'bimaasuperconnector@gmail.com',
   siteUrl: 'https://bimalumni.in',
   /** Shown as "Effective date" and "Last updated" on both pages. */
-  effectiveDate: '1 October 2026',
+  effectiveDate: '30 October 2026',
   /** Governing law named in the Terms. */
   governingLaw: 'the laws of India',
 } as const;

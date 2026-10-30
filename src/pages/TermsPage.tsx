@@ -77,7 +77,8 @@ export function TermsPage() {
           You keep ownership of what you add (profile details, photo, job posts, event listings, feedback).
           You give {LEGAL.operatorShort} a non-exclusive, royalty-free licence to store, display and use it
           to run the service, including showing it to other approved members as described in the Privacy
-          Policy. You confirm that you have the right to post it, and that your photo shows you.
+          Policy. You confirm that you have the right to post it, and that your photo shows you. A profile photo's
+          web address is public, so anyone with the link can view the image.
         </p>
         <p>
           You decide what appears on your directory profile and which contact channels are shown. Do not
@@ -86,36 +87,47 @@ export function TermsPage() {
         </p>
       </Section>
 
-      <Section title="6. Jobs and recruitment">
+      <Section title="6. Emails from SuperConnector">
         <p>
-          Job posts are submitted by members and reviewed by an administrator before they appear, but we do
-          not verify employers, check claims in a listing or take part in any hiring decision.
-          {' '}{LEGAL.operatorShort} is not an employer or recruitment agency. Never pay money to secure a
-          job, and report anything that looks like a scam using the report button. Listings expire on the
-          date set by the poster.
+          By joining you agree that we may email you: a one-time welcome message when you are approved;
+          a birthday greeting if you have given your date of birth; calendar invitations for meetings and
+          events you take part in; and monthly reminders about the SuperConnector meetup and job openings,
+          which are sent to a Google Group for your batch. Emails are sent from {LEGAL.contactEmail}, in
+          limited daily numbers. To stop them, or to be removed from your batch's group, email us.
         </p>
       </Section>
 
-      <Section title="7. Events and meetups">
+      <Section title="7. Jobs and recruitment">
+        <p>
+          Job posts are published by members and appear straight away, without review in advance. We do
+          not verify employers, check claims in a listing or take part in any hiring decision.
+          {' '}{LEGAL.operatorShort} is not an employer or recruitment agency. Never pay money to secure a
+          job, and report anything that looks like a scam using the report button; administrators review
+          reports and may remove a listing. Listings expire on the date set by the poster.
+        </p>
+      </Section>
+
+      <Section title="8. Events and meetups">
         <p>
           Events are created and run by the member who organises them, not by {LEGAL.operatorShort}.
           The organiser decides who is invited, capacity and the RSVP deadline, and can see who has
-          responded. When you RSVP, your email address may be added to the organiser's Google Calendar
-          event so that you receive an invitation. Attend in-person events at your own risk and use
+          responded. When you RSVP as attending, you are invited to a Google Calendar event created from the{' '}
+          {LEGAL.serviceName} Google account, so that you receive an invitation. <strong>The organiser and
+          other attendees' email addresses may be visible to each other on that invitation.</strong> Attend in-person events at your own risk and use
           your own judgement about safety.
         </p>
       </Section>
 
-      <Section title="8. Reporting and moderation">
+      <Section title="9. Reporting and moderation">
         <p>
-          Members can report job posts and events. Administrators may remove content, reject or suspend
-          accounts, and take other reasonable steps to keep the community safe. Administrators and batch
+          Members can report job posts and events. Administrators may remove content, correct or remove
+          profile details that break these Terms, reject or suspend accounts, and take other reasonable steps to keep the community safe. Administrators and batch
           representatives act as volunteers; decisions are made in good faith and may not always be
           explained in detail.
         </p>
       </Section>
 
-      <Section title="9. No guarantees">
+      <Section title="10. No guarantees">
         <p>
           {LEGAL.serviceName} helps alumni meet and share opportunities. We do not promise any job,
           business, mentorship or networking outcome. The service is provided "as is" and "as available",
@@ -124,15 +136,15 @@ export function TermsPage() {
         </p>
       </Section>
 
-      <Section title="10. Third-party services">
+      <Section title="11. Third-party services">
         <p>
-          The service depends on Google (sign-in, Calendar, Meet), Firebase, GitHub, Cloudflare and
-          ImageKit, described in the Privacy Policy. Your use of Google services is also governed by
+          The service depends on Google (sign-in, Calendar, Meet, Gmail, Google Groups), Firebase, GitHub,
+          Cloudflare and ImageKit, described in the Privacy Policy. Your use of Google services is also governed by
           Google's own terms.
         </p>
       </Section>
 
-      <Section title="11. Intellectual property">
+      <Section title="12. Intellectual property">
         <p>
           The {LEGAL.serviceName} name, design and software belong to {LEGAL.operatorName} or its
           licensors. You may not copy or reuse them except as the service allows. The names and logos of
@@ -140,7 +152,7 @@ export function TermsPage() {
         </p>
       </Section>
 
-      <Section title="12. Limits on liability">
+      <Section title="13. Limits on liability">
         <p>
           To the extent the law allows, {LEGAL.operatorName}, its administrators and volunteers are not
           liable for indirect or consequential loss, for the conduct or content of members, or for any
@@ -149,7 +161,7 @@ export function TermsPage() {
         </p>
       </Section>
 
-      <Section title="13. Ending your membership">
+      <Section title="14. Ending your membership">
         <p>
           You may stop using the service at any time and ask us to remove your account by emailing{' '}
           <a href={`mailto:${LEGAL.contactEmail}`} className="text-link hover:text-link-active">
@@ -160,7 +172,7 @@ export function TermsPage() {
         </p>
       </Section>
 
-      <Section title="14. Changes to these Terms">
+      <Section title="15. Changes to these Terms">
         <p>
           We may update these Terms. The date at the top shows the latest version. If you keep using the
           service after a change, you accept the updated Terms. For significant changes we will try to
@@ -168,7 +180,7 @@ export function TermsPage() {
         </p>
       </Section>
 
-      <Section title="15. Governing law and contact">
+      <Section title="16. Governing law and contact">
         <p>
           These Terms are governed by {LEGAL.governingLaw}. Questions, complaints or notices:{' '}
           <a href={`mailto:${LEGAL.contactEmail}`} className="text-link hover:text-link-active">
